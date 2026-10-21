@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#171b32">
+  <title>Cabin Lab · 智能座舱实验室</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-car" viewBox="0 0 24 24"><path d="m5 8 2-4h10l2 4M4 9h16v9H4zM7 18v2m10-2v2M7 13h2m6 0h2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 1-8 8H4v-8a8 8 0 0 1 16 0Z"/><path d="M8 10h8m-8 4h5"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 10-13h-7z"/></symbol>
+    <symbol id="i-temp" viewBox="0 0 24 24"><path d="M9 14V5a3 3 0 0 1 6 0v9a5 5 0 1 1-6 0Z"/><path d="M12 9v9"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="M6 8v6a4 4 0 0 0 4 4h5M13 5h5a3 3 0 0 1 0 6h-6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 3v6c0 5-8 10-8 10S4 16 4 11V5z"/><path d="m8 11 3 3 5-6"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m12 4 8 8m-8-8-8 8m8-8v16"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></symbol>
+  </svg>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Cabin Lab首页"><span class="brand-icon"><svg class="icon"><use href="#i-car"/></svg></span><span>Cabin<span class="brand-light">Lab</span><small>智能座舱实验室</small></span></a>
+    <div class="nav-label">工作空间</div>
+    <div class="nav-active"><svg class="icon"><use href="#i-chat"/></svg>座舱对话<span class="nav-dot"></span></div>
+    <section class="settings">
+      <div class="nav-label">运行设置</div>
+      <label for="mode">对话模式</label>
+      <select id="mode" disabled><option value="offline">离线演示</option><option value="live">真实模型 Agent</option></select>
+      <label for="nlu-mode">本地 NLU</label>
+      <select id="nlu-mode" disabled><option value="hybrid">规则 + BGE 语义匹配</option><option value="rules">规则匹配</option></select>
+      <p id="mode-note" class="settings-note">正在连接本地服务…</p>
+      <div class="privacy-note"><svg class="icon"><use href="#i-shield"/></svg><span>车辆与路线均为模拟数据</span></div>
+    </section>
+    <div class="sidebar-bottom"><span class="connection-dot" id="connection-dot"></span><span id="connection-label">正在连接</span><span class="local-tag">LOCAL</span></div>
+  </aside>
+  <main class="workspace">
+    <header class="page-header"><div><div class="eyebrow">CONVERSATION WORKSPACE</div><h1>智能座舱实验室<span class="version">DEMO</span></h1><p>从一句指令，了解 NLU 与 Agent 如何协作。</p></div><div class="header-badges"><span class="pill" id="mode-badge">连接中</span><span class="pill purple" id="nlu-badge">本地 NLU</span></div></header>
+    <div class="content-grid">
+      <section class="conversation panel" aria-label="座舱对话">
+        <header class="panel-header"><div><span class="small-status"></span><h2>座舱助手</h2><span class="muted">文字交互</span></div><button class="text-button" id="reset" disabled><svg class="icon"><use href="#i-reset"/></svg>重置会话</button></header>
+        <div id="chat-scroll" class="chat-scroll">
+          <div id="welcome" class="welcome"><div class="welcome-icon"><svg class="icon"><use href="#i-spark"/></svg></div><span class="eyebrow">YOUR CABIN, YOUR COMMAND</span><h2>今天，想让座舱做什么？</h2><p>调整温度、查询状态，或试试一个出行任务。<br>每一步的识别与执行，都能在右侧查看。</p>
+            <div class="suggestions"><button class="suggestion" data-prompt="把车内温度设置成二十四度"><svg class="icon"><use href="#i-temp"/></svg><strong>中文温度指令</strong><span>把车内温度设置成二十四度</span><b>↗</b></button><button class="suggestion" data-prompt="现在还有多少电"><svg class="icon"><use href="#i-bolt"/></svg><strong>查询车辆状态</strong><span>现在还有多少电</span><b>↗</b></button><button class="suggestion" data-prompt="电量只有25%，去机场要不要充电？帮我找个方案"><svg class="icon"><use href="#i-route"/></svg><strong>规划机场出行</strong><span>比较路线、电量与充电方案</span><b>↗</b></button><button class="suggestion" data-prompt="空调调到35度"><svg class="icon"><use href="#i-shield"/></svg><strong>试试执行边界</strong><span>空调调到35度会发生什么</span><b>↗</b></button></div>
+          </div>
+          <div id="messages" class="messages" aria-live="polite" aria-relevant="additions"></div>
+          <div id="pending" class="pending" hidden><span class="assistant-avatar"><svg class="icon"><use href="#i-spark"/></svg></span><span class="typing"><i></i><i></i><i></i></span><span id="pending-label">正在处理指令…</span></div>
+        </div>
+        <form id="chat-form" class="composer"><div class="input-wrap"><label class="sr-only" for="prompt">输入座舱指令</label><textarea id="prompt" rows="2" maxlength="2000" placeholder="输入指令，例如：把车内温度设置成二十四度" disabled></textarea><button id="send" type="submit" class="send-button" aria-label="发送指令" disabled><svg class="icon"><use href="#i-send"/></svg></button></div><div class="composer-footer"><span>Enter 发送 · Shift + Enter 换行</span><span id="char-count">0 / 2000</span></div></form>
+      </section>
+      <aside class="inspector">
+        <section class="panel vehicle"><header class="section-heading"><h2>车辆状态</h2><span class="mini-badge">模拟车辆</span></header><div class="vehicle-visual"><svg viewBox="0 0 280 100" role="img" aria-label="模拟车辆示意图"><ellipse cx="140" cy="83" rx="108" ry="7" fill="#e8e8f4"/><path d="m36 61 20-9 26-27h76l38 26 35 9 12 14H32Z" fill="#e9e5ff" stroke="#8e7bdc" stroke-width="2"/><path d="m87 30-23 23h53V30Zm36 0v23h62l-30-23Z" fill="#fff" stroke="#b4a8e6"/><path d="M34 66h20m153-1h29M129 61h14" stroke="#8e7bdc" stroke-width="3" stroke-linecap="round"/><circle cx="78" cy="75" r="14" fill="#35344c"/><circle cx="78" cy="75" r="6" fill="#d2d0e4"/><circle cx="196" cy="75" r="14" fill="#35344c"/><circle cx="196" cy="75" r="6" fill="#d2d0e4"/></svg></div><div class="vehicle-metrics"><div><span><svg class="icon"><use href="#i-bolt"/></svg>剩余电量</span><strong id="battery">—<small>%</small></strong></div><div><span><svg class="icon"><use href="#i-temp"/></svg>空调温度</span><strong id="temperature">—<small>℃</small></strong></div></div><progress id="battery-bar" max="100" value="25" aria-label="剩余电量"></progress><p class="vehicle-caption">到达预留电量 10% · 数据随操作更新</p></section>
+        <section class="panel analysis"><header class="section-heading"><h2>NLU 识别</h2><span class="mini-badge" id="decision-badge">等待输入</span></header><div id="nlu-empty" class="empty-state"><svg class="icon"><use href="#i-spark"/></svg><p>发送指令后查看识别结果</p><span>意图 · 槽位 · 相似度</span></div><div id="nlu-detail" hidden><dl class="decision-list"><div><dt>处理路径</dt><dd id="result-source">—</dd></div><div><dt>候选意图</dt><dd id="result-intent">—</dd></div><div><dt>参数</dt><dd id="result-arguments">—</dd></div></dl><div class="score-grid"><div><span>相似度</span><strong id="similarity">—</strong></div><div><span>意图分差</span><strong id="margin">—</strong></div><div><span>识别耗时</span><strong id="nlu-time">—</strong></div></div><div id="match-box" class="match-box" hidden><span>最相似示例</span><p id="matched-example"></p></div><p id="decision-reason" class="decision-reason"></p></div></section>
+        <section class="panel execution"><header class="section-heading"><h2>执行过程</h2><button id="refresh" class="text-button compact" aria-label="刷新会话状态" disabled>刷新</button></header><div id="trace-empty" class="trace-empty">每次请求的工具调用将显示在这里</div><ol id="timeline" class="timeline"></ol><div class="execution-footer"><span>本轮总耗时</span><strong id="total-time">—</strong></div><details id="raw-details"><summary>查看原始事件</summary><pre id="raw-events">[]</pre></details></section>
+      </aside>
+    </div>
+    <footer class="page-footer">Cabin Lab <span>·</span> 本地教学原型 <span>·</span> 不连接真实车辆</footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
