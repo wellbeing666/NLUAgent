@@ -1,0 +1,10 @@
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+models/
+.hf-cache/
+reports/nlu-*.json
+.idea/

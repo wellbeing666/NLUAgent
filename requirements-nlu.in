@@ -1,0 +1,4 @@
+# 可选本地 NLU 依赖；基础 Agent 依赖保持原有锁定版本。
+-r requirements.txt
+sentence-transformers>=5.1,<6
+torch>=2.6

@@ -1,0 +1,21 @@
+{
+  "set_temperature": {
+    "similarity": 0.85,
+    "margin": 0.1
+  },
+  "query_vehicle": {
+    "similarity": 0.74,
+    "margin": 0.04
+  },
+  "metadata": {
+    "calibrated": true,
+    "model_id": "BAAI/bge-small-zh-v1.5",
+    "model_revision": "7999e1d3359715c523056ef9478215996d62a620",
+    "examples_sha256": "9fa8414364f2237e1b2a4ddf897e0f60bacfc7661e7f0e6ff86950ba8bb5951d",
+    "calibration_sha256": "029f184748640686bcff0cf16e009d19bf02f7391d66e9e22e8697c6ce8765ce",
+    "calibration_count": 54,
+    "used_test_for_selection": false,
+    "objective": "min_false_accept_then_max_correct_accept_then_stricter_thresholds",
+    "note": "similarity和margin均不是概率；1.01表示该意图语义匹配被关闭。"
+  }
+}
