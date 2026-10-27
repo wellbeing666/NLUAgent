@@ -191,6 +191,9 @@ class NLURouter:
         if intent:
             return NLUDecision(action="execute", source="rule_nlu", intent=intent, reason="exact_rule_match",
                                elapsed_ms=(perf_counter() - start) * 1000)
+        # 向量库仍只有温度/状态两类，不能把新增续航/记忆请求误吸收成普通状态查询。
+        if re.search(r'续航|能.*(?:跑|行驶|开).*(?:远|公里)|行驶记录|行驶历史|历史能耗|历史.*耗电', normalize_text(text)):
+            return NLUDecision(source='nlu_guard', reason='range_or_memory_request')
         if self.semantic is None:
             return NLUDecision(source="rule_nlu", reason="no_rule_match")
         if non_local_reason(text):

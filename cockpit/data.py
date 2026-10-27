@@ -7,6 +7,12 @@ from dataclasses import dataclass
 class VehicleState:
     battery_percent: float = 25.0
     temperature_c: float = 26.0
+    speed_kph: float | None = 0.0
+    gear: str | None = "P"
+    parking_brake: bool | None = True
+    headlights_on: bool = False
+    seat_position_percent: float = 50.0
+    wiper_mode: str = "off"
 
 
 RESERVE_PERCENT = 10.0

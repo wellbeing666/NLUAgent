@@ -1,0 +1,39 @@
+{
+  "query": "导航到北京南站",
+  "origin_type": "公开地点模拟起点",
+  "reply": "路线已规划，但需要先说明一点：本次搜索并未检索到“北京南站”本身的精确站点，工具在名称匹配的候选中选中了近似直线距离最近的一个地点：**速8优选酒店(北京南站前门天坛西门店)**（北京市西城区南华东街6号，直线距离约3.29公里；候选共11个）。\n\n- 起点：北京天安门（模拟车辆位置）\n- 推荐路线：约 **5.43公里**，**约24分钟**，无过路费；另有一条备选路线，约5.97公里、约26分钟\n- 主要路书：东华门路→西华门大街→南长街→人大会堂西路→前门西大街→南新华街/虎坊路→北纬路→南华东街到达\n- 可在网页“高德导航”面板查看路线详情并打开高德；高德链接会重新算路，可能与本次路线略有差异\n\n该结果只是路线查询，未启动导航。如果你想改为直接到北京南站的具体站房（如进站口），我可以按“北京南站进站口”再查一次，你看是否需要？",
+  "error": false,
+  "rejected": false,
+  "selected": {
+    "name": "速8优选酒店(北京南站前门天坛西门店)",
+    "location": "116.385299,39.881097",
+    "id": "B0LUVSDL57",
+    "address": "北京市 北京市 西城区 南华东街6号",
+    "distance_m": 3294.9
+  },
+  "candidate_count": 11,
+  "routes": [
+    {
+      "name": "高德驾车路线",
+      "distance_km": 5.43,
+      "duration_minutes": 23.7
+    },
+    {
+      "name": "高德驾车路线",
+      "distance_km": 5.97,
+      "duration_minutes": 26.4
+    }
+  ],
+  "events": [
+    "nlu.result",
+    "route",
+    "agent.tools_selected",
+    "tool.call",
+    "navigation.location",
+    "navigation.match",
+    "tool.result"
+  ],
+  "tool_names": [
+    "navigate_to_destination"
+  ]
+}

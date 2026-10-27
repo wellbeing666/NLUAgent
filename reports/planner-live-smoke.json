@@ -1,0 +1,602 @@
+{
+  "scope": "真实模型规划＋模拟车辆工具；未调用高德，无真实车控",
+  "cases": [
+    {
+      "input": "把空调调到24度，并打开前照灯，然后查询车辆状态",
+      "motion": "parked",
+      "reply": "本轮3项任务：成功3、拦截0、失败0、跳过0。\nt1 · 设置空调 [成功]：模拟空调已设为24℃，读回核验通过。\nt2 · 开关前照灯 [成功]：模拟前照灯已打开，读回核验通过。\nt3 · 查询车辆状态 [成功]：查询时模拟车辆电量25%，空调24℃，已停车。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 24
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "set_headlights",
+              "arguments": {
+                "enabled": true
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "tool": "get_vehicle_state",
+              "arguments": {},
+              "depends_on": [
+                "t1",
+                "t2"
+              ],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": [],
+            "t3": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "set_temperature",
+            "depends_on": [],
+            "arguments": {
+              "temperature": 24
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 24.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "把空调调到24度"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "set_headlights",
+            "depends_on": [],
+            "arguments": {
+              "enabled": true
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "headlights_on": true,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_headlights",
+                "rule_id": "HEADLIGHTS_PARK_ONLY",
+                "reason": "车速为0、P挡且已驻车，符合本动作安全条件。",
+                "vehicle": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "打开前照灯"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t3",
+            "tool": "get_vehicle_state",
+            "depends_on": [
+              "t1",
+              "t2"
+            ],
+            "arguments": {},
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "battery_percent": 25.0,
+                "temperature_c": 24.0,
+                "reserve_percent": 10.0,
+                "location": null,
+                "motion": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "headlights_on": true,
+                "seat_position_percent": 50.0,
+                "wiper_mode": "off",
+                "last_safety_decision": {
+                  "allowed": true,
+                  "action": "set_headlights",
+                  "rule_id": "HEADLIGHTS_PARK_ONLY",
+                  "reason": "车速为0、P挡且已驻车，符合本动作安全条件。",
+                  "vehicle": {
+                    "status": "parked",
+                    "label": "已停车",
+                    "speed_kph": 0.0,
+                    "gear": "P",
+                    "parking_brake": true,
+                    "source": "manual_simulation",
+                    "simulated": true
+                  },
+                  "policy_version": "cockpit-demo-v1"
+                }
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 3,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        }
+      }
+    },
+    {
+      "input": "关闭前照灯，并座椅调到60%，同时空调调到23度",
+      "motion": "driving",
+      "reply": "本轮3项任务：成功1、拦截2、失败0、跳过0。\nt1 · 开关前照灯 [已拦截]：行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。\nt2 · 调整座椅 [已拦截]：行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。\nt3 · 设置空调 [成功]：模拟空调已设为23℃，读回核验通过。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "set_headlights",
+              "arguments": {
+                "enabled": false
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "adjust_seat",
+              "arguments": {
+                "position_percent": 60
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              },
+              "depends_on": [],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": [],
+            "t3": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "set_headlights",
+            "depends_on": [],
+            "arguments": {
+              "enabled": false
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "set_headlights",
+                "rule_id": "HEADLIGHTS_PARK_ONLY",
+                "reason": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "关闭前照灯"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "adjust_seat",
+            "depends_on": [],
+            "arguments": {
+              "position_percent": 60
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "adjust_seat",
+                "rule_id": "SEAT_PARK_ONLY",
+                "reason": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "座椅调到60%"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t3",
+            "tool": "set_temperature",
+            "depends_on": [],
+            "arguments": {
+              "temperature": 23
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 23.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "空调调到23度"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 1,
+          "blocked": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      }
+    },
+    {
+      "input": "查询车辆电量，如果电量低于30%，查询机场高速沿途的模拟充电站",
+      "motion": "parked",
+      "reply": "本轮2项任务：成功2、拦截0、失败0、跳过0。\nt1 · 查询车辆状态 [成功]：查询时模拟车辆电量25%，空调23℃，已停车。\nt2 · 查询模拟充电站 [成功]：高速服务区充电站：可用端口2，含充电行程76分钟。模拟快照，未预约或充电。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "get_vehicle_state",
+              "arguments": {},
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "find_chargers",
+              "arguments": {
+                "route_id": "airport_fast"
+              },
+              "depends_on": [
+                "t1"
+              ],
+              "condition": {
+                "ref": "t1.data.battery_percent",
+                "operator": "lt",
+                "value": 30
+              }
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "get_vehicle_state",
+            "depends_on": [],
+            "arguments": {},
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "battery_percent": 25.0,
+                "temperature_c": 23.0,
+                "reserve_percent": 10.0,
+                "location": null,
+                "motion": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "headlights_on": true,
+                "seat_position_percent": 50.0,
+                "wiper_mode": "off",
+                "last_safety_decision": null
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "find_chargers",
+            "depends_on": [
+              "t1"
+            ],
+            "arguments": {
+              "route_id": "airport_fast"
+            },
+            "condition": {
+              "ref": "t1.data.battery_percent",
+              "operator": "lt",
+              "value": 30
+            },
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "chargers": [
+                  {
+                    "charger_id": "C01",
+                    "name": "高速服务区充电站",
+                    "route_id": "airport_fast",
+                    "available_ports": 2,
+                    "power_kw": 120,
+                    "detour_minutes": 8,
+                    "charging_minutes": 20,
+                    "battery_gain_percent": 30.0,
+                    "total_trip_minutes": 76,
+                    "arrival_battery_percent": 37.0
+                  }
+                ],
+                "note": "固定模拟快照，不代表实时可用性；未预约、未充电。"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 2,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        }
+      }
+    },
+    {
+      "input": "再查询一遍刚才那条路线的模拟充电站",
+      "motion": "parked",
+      "reply": "本轮1项任务：成功1、拦截0、失败0、跳过0。\nt1 · 查询模拟充电站 [成功]：高速服务区充电站：可用端口2，含充电行程76分钟。模拟快照，未预约或充电。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "find_chargers",
+              "arguments": {
+                "route_id": "airport_fast"
+              },
+              "depends_on": [],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "find_chargers",
+            "depends_on": [],
+            "arguments": {
+              "route_id": "airport_fast"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "chargers": [
+                  {
+                    "charger_id": "C01",
+                    "name": "高速服务区充电站",
+                    "route_id": "airport_fast",
+                    "available_ports": 2,
+                    "power_kw": 120,
+                    "detour_minutes": 8,
+                    "charging_minutes": 20,
+                    "battery_gain_percent": 30.0,
+                    "total_trip_minutes": 76,
+                    "arrival_battery_percent": 37.0
+                  }
+                ],
+                "note": "固定模拟快照，不代表实时可用性；未预约、未充电。"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 1,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        }
+      }
+    }
+  ]
+}

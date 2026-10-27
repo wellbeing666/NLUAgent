@@ -1,0 +1,45 @@
+{
+  "query": "导航到北京南站",
+  "origin_type": "公开地点模拟起点",
+  "reply": "已规划到北京南站的驾车路线：\n\n- 起点：北京天安门（模拟车辆位置，由你在车辆面板手动设置）\n- 终点：北京南站（丰台区永外大街车站路12号），只有1个名称匹配候选，按近似直线距离约5.15 km选中\n- 推荐路线：7.68 km，约29.5分钟，无过路费\n- 备选：8.42 km／约36分钟；9.26 km／约39.8分钟\n\n主要路段：东华门路 → 西华门大街 → 南长街 → 人大会堂西路 → 前门西大街 → 南新华街、虎坊路 → 北纬路 → 太平街、马家堡东路 → 北京南站路 → 到达。\n\n可在网页“高德导航”面板查看路线并打开高德。提示：这只是路线规划，尚未开始导航；高德链接会按打开时的实时路况重新算路，该真实路线也不提供电动车耗电估算。",
+  "error": false,
+  "rejected": false,
+  "selected": {
+    "name": "北京南站",
+    "location": "116.378517,39.865246",
+    "id": "B000A83AJN",
+    "address": "北京市 北京市 丰台区 永外大街车站路12号",
+    "distance_m": 5150.1
+  },
+  "candidate_count": 1,
+  "search_scope": "national_candidates",
+  "routes": [
+    {
+      "name": "高德驾车路线",
+      "distance_km": 7.68,
+      "duration_minutes": 29.5
+    },
+    {
+      "name": "高德驾车路线",
+      "distance_km": 8.42,
+      "duration_minutes": 36.0
+    },
+    {
+      "name": "高德驾车路线",
+      "distance_km": 9.26,
+      "duration_minutes": 39.8
+    }
+  ],
+  "events": [
+    "nlu.result",
+    "route",
+    "agent.tools_selected",
+    "tool.call",
+    "navigation.location",
+    "navigation.match",
+    "tool.result"
+  ],
+  "tool_names": [
+    "navigate_to_destination"
+  ]
+}

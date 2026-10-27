@@ -1,0 +1,203 @@
+{
+  "scope": "真实规划和回答模型＋模拟业务工具，无高德调用",
+  "cases": [
+    {
+      "input": "电量只有25%，去机场要不要充电？帮我比较方案，给个建议",
+      "reply": "计划必须包含任务，或仅包含需要澄清的问题。",
+      "execution": null
+    },
+    {
+      "input": "关闭前照灯，并座椅调到60%，同时空调调到23度",
+      "reply": "空调已设为23℃（模拟车辆，设置后已核验）。前照灯关闭和座椅调到60%这两项未完成：车辆当前处于模拟行驶状态（约40 km/h、D挡），出于安全限制，行驶中禁止操作前照灯和调整座椅。请先停车、切换到P挡并启用驻车制动，再重新下达这两项指令。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "set_headlights",
+              "arguments": {
+                "enabled": false
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "adjust_seat",
+              "arguments": {
+                "position_percent": 60
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              },
+              "depends_on": [],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": [],
+            "t3": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "set_headlights",
+            "depends_on": [],
+            "arguments": {
+              "enabled": false
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "set_headlights",
+                "rule_id": "HEADLIGHTS_PARK_ONLY",
+                "reason": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "关闭前照灯"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "adjust_seat",
+            "depends_on": [],
+            "arguments": {
+              "position_percent": 60
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "adjust_seat",
+                "rule_id": "SEAT_PARK_ONLY",
+                "reason": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "座椅调到60%"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t3",
+            "tool": "set_temperature",
+            "depends_on": [],
+            "arguments": {
+              "temperature": 23
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 23.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "空调调到23度"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 1,
+          "blocked": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        "answer": {
+          "source": "model",
+          "duration_ms": 2566.4
+        }
+      }
+    }
+  ]
+}

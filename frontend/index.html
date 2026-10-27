@@ -7,6 +7,7 @@
   <title>Cabin Lab · 智能座舱实验室</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/navigation.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -24,7 +25,8 @@
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Cabin Lab首页"><span class="brand-icon"><svg class="icon"><use href="#i-car"/></svg></span><span>Cabin<span class="brand-light">Lab</span><small>智能座舱实验室</small></span></a>
     <div class="nav-label">工作空间</div>
-    <div class="nav-active"><svg class="icon"><use href="#i-chat"/></svg>座舱对话<span class="nav-dot"></span></div>
+    <button class="nav-active workspace-tab" id="tab-chat" type="button" aria-pressed="true"><svg class="icon"><use href="#i-chat"/></svg>座舱对话<span class="nav-dot"></span></button>
+    <button class="workspace-tab" id="tab-navigation" type="button" aria-pressed="false"><svg class="icon"><use href="#i-route"/></svg>高德导航<span class="nav-new">NEW</span></button>
     <section class="settings">
       <div class="nav-label">运行设置</div>
       <label for="mode">对话模式</label>
@@ -32,18 +34,62 @@
       <label for="nlu-mode">本地 NLU</label>
       <select id="nlu-mode" disabled><option value="hybrid">规则 + BGE 语义匹配</option><option value="rules">规则匹配</option></select>
       <p id="mode-note" class="settings-note">正在连接本地服务…</p>
-      <div class="privacy-note"><svg class="icon"><use href="#i-shield"/></svg><span>车辆与路线均为模拟数据</span></div>
+      <div class="privacy-note"><svg class="icon"><use href="#i-shield"/></svg><span>车辆为模拟数据 · 高德导航需联网</span></div>
     </section>
     <div class="sidebar-bottom"><span class="connection-dot" id="connection-dot"></span><span id="connection-label">正在连接</span><span class="local-tag">LOCAL</span></div>
   </aside>
   <main class="workspace">
     <header class="page-header"><div><div class="eyebrow">CONVERSATION WORKSPACE</div><h1>智能座舱实验室<span class="version">DEMO</span></h1><p>从一句指令，了解 NLU 与 Agent 如何协作。</p></div><div class="header-badges"><span class="pill" id="mode-badge">连接中</span><span class="pill purple" id="nlu-badge">本地 NLU</span></div></header>
-    <div class="content-grid">
+    <section id="navigation-workspace" class="navigation-workspace" aria-label="高德导航" hidden>
+      <div class="navigation-intro"><div><span class="eyebrow">AMAP DRIVING</span><h2>规划下一程</h2><p>选择具体起终点，查询真实路线与转向路书。</p></div><span id="amap-status" class="mini-badge">检查配置中</span></div>
+      <p id="amap-config-hint" class="navigation-notice" hidden>尚未配置高德 Key。请在本地 .env 中填写 AMAP_API_KEY（Web服务类型），重启服务后使用。不要在聊天中发送密钥。</p>
+      <div class="navigation-layout">
+        <section class="panel navigation-form-panel" aria-label="路线设置">
+          <h3>起终点设置</h3>
+          <p class="navigation-caption">手动选择起点，不读取设备位置。城市是搜索范围，可使用名称或行政区代码。</p>
+          <div class="place-field"><label for="origin-city">起点城市</label><input id="origin-city" maxlength="40" value="北京" autocomplete="off"><label for="origin-keyword">起点</label><div class="place-search-row"><input id="origin-keyword" maxlength="100" placeholder="例如：北京南站" autocomplete="off"><button id="origin-search" type="button">搜索起点</button></div><div id="origin-results" class="place-results" aria-label="起点候选"></div><p id="origin-selected" class="selected-place">尚未选择具体起点</p></div>
+          <div class="place-field"><label for="destination-city">终点城市</label><input id="destination-city" maxlength="40" value="北京" autocomplete="off"><label for="destination-keyword">终点</label><div class="place-search-row"><input id="destination-keyword" maxlength="100" placeholder="例如：首都机场T3航站楼" autocomplete="off"><button id="destination-search" type="button">搜索终点</button></div><div id="destination-results" class="place-results" aria-label="终点候选"></div><p id="destination-selected" class="selected-place">尚未选择具体终点</p></div>
+          <label for="navigation-strategy">路线偏好</label><select id="navigation-strategy"><option value="recommended">高德推荐</option><option value="avoid_congestion">躲避拥堵</option><option value="less_fee">少收费</option><option value="no_highway">不走高速</option></select>
+          <button id="plan-navigation" class="navigation-primary" type="button" disabled>查询驾车路线</button>
+          <p class="navigation-caption">导航面板独立联网，不受聊天的离线／真实模型开关影响。提交的地点与坐标会发送给高德。</p>
+          <div id="navigation-message" class="navigation-message" role="status" aria-live="polite">从搜索起点开始。</div>
+        </section>
+        <section class="panel navigation-result-panel" aria-label="导航路线结果">
+          <div id="navigation-empty" class="navigation-empty"><svg class="icon"><use href="#i-route"/></svg><h3>从这里，连接真实世界</h3><p>搜索地点并选择候选后，显示距离、预计时间与地图概览。</p><span>高德地图 · GCJ-02 坐标 · 驾车路线</span></div>
+          <div id="navigation-result" hidden>
+            <div class="navigation-result-heading"><h3 id="navigation-title"></h3><span class="mini-badge accepted">真实高德数据</span></div>
+            <p id="navigation-selection" class="navigation-selection" hidden></p>
+            <div id="navigation-routes" class="navigation-routes" role="group" aria-label="备选路线"></div>
+            <div class="navigation-map-frame"><img id="navigation-map" alt="高德驾车路线概览，A为起点，B为终点" hidden><div id="navigation-map-message" class="navigation-map-message">选择路线后加载高德地图。</div></div>
+            <div class="navigation-map-meta"><span>地图 © 高德地图 · 路线概览采用稀疏采样</span><button id="retry-navigation-map" type="button" hidden>重试地图</button></div>
+            <div class="navigation-links"><a id="navigation-web-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">在高德查看路线 ↗</a><a id="navigation-app-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">打开高德导航 ↗</a></div>
+            <p class="navigation-caption">链接由高德重新算路，可能与当前备选路线不同；移动端可尝试唤起已安装的高德App。此页面展示路书，不跟踪车辆位置或播报转向。</p>
+            <details class="navigation-steps" open><summary>查看转向路书</summary><ol id="navigation-steps"></ol></details>
+            <p class="navigation-notice">车辆电量仍是模拟值，当前真实路线未计算耗电、到达电量或充电可达性。</p>
+          </div>
+        </section>
+      </div>
+    </section>
+    <div class="content-grid" id="chat-workspace">
       <section class="conversation panel" aria-label="座舱对话">
         <header class="panel-header"><div><span class="small-status"></span><h2>座舱助手</h2><span class="muted">文字交互</span></div><button class="text-button" id="reset" disabled><svg class="icon"><use href="#i-reset"/></svg>重置会话</button></header>
+        <details id="task-plan-panel" class="task-plan-panel" aria-label="本轮任务执行结果" hidden>
+          <summary><strong>查看任务执行明细</strong><span id="task-counts"></span></summary>
+          <p class="task-plan-caption">任务按依赖调度；以下为本轮真实执行结果。</p>
+          <ol id="task-plan-list"></ol>
+        </details>
         <div id="chat-scroll" class="chat-scroll">
-          <div id="welcome" class="welcome"><div class="welcome-icon"><svg class="icon"><use href="#i-spark"/></svg></div><span class="eyebrow">YOUR CABIN, YOUR COMMAND</span><h2>今天，想让座舱做什么？</h2><p>调整温度、查询状态，或试试一个出行任务。<br>每一步的识别与执行，都能在右侧查看。</p>
-            <div class="suggestions"><button class="suggestion" data-prompt="把车内温度设置成二十四度"><svg class="icon"><use href="#i-temp"/></svg><strong>中文温度指令</strong><span>把车内温度设置成二十四度</span><b>↗</b></button><button class="suggestion" data-prompt="现在还有多少电"><svg class="icon"><use href="#i-bolt"/></svg><strong>查询车辆状态</strong><span>现在还有多少电</span><b>↗</b></button><button class="suggestion" data-prompt="电量只有25%，去机场要不要充电？帮我找个方案"><svg class="icon"><use href="#i-route"/></svg><strong>规划机场出行</strong><span>比较路线、电量与充电方案</span><b>↗</b></button><button class="suggestion" data-prompt="空调调到35度"><svg class="icon"><use href="#i-shield"/></svg><strong>试试执行边界</strong><span>空调调到35度会发生什么</span><b>↗</b></button></div>
+          <div id="welcome" class="welcome"><div class="welcome-icon"><svg class="icon"><use href="#i-spark"/></svg></div><span class="eyebrow">YOUR CABIN, YOUR COMMAND</span><h2>今天，想让座舱做什么？</h2><p>导航、调整温度，或一次下达多个指令。<br>点击示例填入输入框，发送后查看实际执行结果。</p>
+            <div class="suggestions">
+              <button type="button" class="suggestion" data-prompt="导航到北京南站" data-live="true" data-requires-location="true"><svg class="icon"><use href="#i-route"/></svg><strong>直接对话导航</strong><span>导航到北京南站</span><small class="suggestion-hint">真实模式 · 先保存模拟车辆位置</small><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="把空调调到24度，并打开前照灯，然后查询车辆状态" data-live="true"><svg class="icon"><use href="#i-spark"/></svg><strong>多意图组合指令</strong><span>把空调调到24度，并打开前照灯，然后查询车辆状态</span><small class="suggestion-hint">真实模式 · 车控受车辆安全检查</small><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="当前电量还能跑多远"><svg class="icon"><use href="#i-bolt"/></svg><strong>根据记忆估算续航</strong><span>当前电量还能跑多远</span><small class="suggestion-hint">本地计算 · 读取长期行驶记录</small><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="查看历史行驶记录"><svg class="icon"><use href="#i-car"/></svg><strong>查看行驶记忆</strong><span>查看历史行驶记录</span><small class="suggestion-hint">重启服务后，已保存记录仍保留</small><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="把车内温度设置成二十四度"><svg class="icon"><use href="#i-temp"/></svg><strong>中文温度指令</strong><span>把车内温度设置成二十四度</span><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="现在还有多少电"><svg class="icon"><use href="#i-bolt"/></svg><strong>查询车辆状态</strong><span>现在还有多少电</span><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="电量只有25%，去机场要不要充电？帮我找个方案"><svg class="icon"><use href="#i-route"/></svg><strong>规划机场出行</strong><span>比较路线、电量与充电方案</span><b>↗</b></button>
+              <button type="button" class="suggestion" data-prompt="空调调到35度"><svg class="icon"><use href="#i-shield"/></svg><strong>试试执行边界</strong><span>空调调到35度会发生什么</span><b>↗</b></button>
+            </div>
           </div>
           <div id="messages" class="messages" aria-live="polite" aria-relevant="additions"></div>
           <div id="pending" class="pending" hidden><span class="assistant-avatar"><svg class="icon"><use href="#i-spark"/></svg></span><span class="typing"><i></i><i></i><i></i></span><span id="pending-label">正在处理指令…</span></div>
@@ -51,6 +97,43 @@
         <form id="chat-form" class="composer"><div class="input-wrap"><label class="sr-only" for="prompt">输入座舱指令</label><textarea id="prompt" rows="2" maxlength="2000" placeholder="输入指令，例如：把车内温度设置成二十四度" disabled></textarea><button id="send" type="submit" class="send-button" aria-label="发送指令" disabled><svg class="icon"><use href="#i-send"/></svg></button></div><div class="composer-footer"><span>Enter 发送 · Shift + Enter 换行</span><span id="char-count">0 / 2000</span></div></form>
       </section>
       <aside class="inspector">
+        <section class="panel range-memory" aria-label="续航与长期行驶记忆">
+          <header class="section-heading"><h2>续航与行驶记忆</h2><span class="mini-badge" id="range-badge">读取中</span></header>
+          <div class="range-metric"><strong id="range-value">—</strong><span>公里 · 保留10%电量</span></div>
+          <p id="range-basis" class="navigation-caption"></p>
+          <p class="navigation-caption">单辆模拟车 demo_vehicle；容量和行程在本机跨会话共享，当前电量按会话设置。参考估算，不保证实际可达。</p>
+          <details id="range-memory-settings"><summary>设置电量与录入行程</summary>
+            <label for="range-soc">当前模拟电量（%）</label><input id="range-soc" type="number" min="0" max="100" step="any" required>
+            <label for="range-capacity">可用电池容量（kWh）</label><input id="range-capacity" type="number" min="5" max="200" step="any" required>
+            <button id="battery-save" type="button">保存电量与容量</button>
+            <p class="navigation-caption">初始60kWh是教学假设，请按本车可用容量填写。容量长期保存；当前电量重置后恢复25%。</p>
+            <label for="trip-distance">已完成行程里程（km）</label><input id="trip-distance" type="number" min="1" max="2000" step="any" placeholder="例如：50" required>
+            <label for="trip-energy">该行程实际耗电（kWh）</label><input id="trip-energy" type="number" min="0.001" max="300" step="any" placeholder="例如：8.5" required>
+            <button id="trip-save" type="button">保存行程到长期记忆</button>
+            <p class="navigation-caption">只录入不含充电的净耗电行程，能耗需在3～60kWh/100km。保存记录不自动扣减当前电量；路线规划不计作历史。</p>
+          </details>
+          <details><summary>最近录入的行驶记录</summary><ol id="driving-memory-list" class="driving-memory-list"></ol></details>
+        </section>
+        <section class="panel safety-panel" aria-label="车辆安全判别">
+          <header class="section-heading"><h2>车辆安全判别</h2><span id="motion-status" class="mini-badge">读取状态</span></header>
+          <p class="navigation-caption">模拟车辆状态 · 演示入口，不连接真实车辆</p>
+          <dl class="safety-telemetry"><div><dt>车速</dt><dd id="motion-speed">—</dd></div><div><dt>挡位</dt><dd id="motion-gear">—</dd></div><div><dt>驻车制动</dt><dd id="motion-brake">—</dd></div></dl>
+          <div class="motion-presets" role="group" aria-label="切换模拟行驶状态"><button id="motion-parked" type="button" disabled>模拟停车</button><button id="motion-driving" type="button" disabled>模拟行驶</button><button id="motion-unknown" type="button" disabled>状态未知</button></div>
+          <dl class="actuator-status"><div><dt>前照灯</dt><dd id="headlights-state">—</dd></div><div><dt>座椅位置</dt><dd id="seat-state">—</dd></div><div><dt>雨刮器</dt><dd id="wipers-state">—</dd></div></dl>
+          <p id="safety-last" class="safety-verdict">还没有执行安全判定</p>
+          <details class="safety-examples"><summary>填入车控演示指令</summary><div><button type="button" data-prompt="打开前照灯">打开前照灯</button><button type="button" data-prompt="关闭前照灯">关闭前照灯</button><button type="button" data-prompt="座椅调到60%">座椅调到60%</button><button type="button" data-prompt="开启雨刮器">开启雨刮器</button><button type="button" data-prompt="关闭雨刮器">关闭雨刮器</button></div></details>
+          <p class="navigation-caption">0km/h＋P挡＋已驻车才允许前灯开关、调座椅和关闭雨刮。开启雨刮可在行驶中使用。停车后需重新下达被拒绝的指令。</p>
+        </section>
+        <section class="panel vehicle-location" aria-label="模拟车辆位置">
+          <header class="section-heading"><h2>车辆当前位置</h2><span class="mini-badge">手动模拟</span></header>
+          <p id="vehicle-location-summary" class="location-summary">尚未设置模拟车辆位置</p>
+          <details id="vehicle-location-settings" open><summary>设置模拟车辆位置</summary>
+            <label for="vehicle-position-name">位置名称</label><input id="vehicle-position-name" maxlength="100" placeholder="例如：北京天安门（模拟）" autocomplete="off">
+            <label for="vehicle-position-coordinates">GCJ-02 经度,纬度</label><input id="vehicle-position-coordinates" maxlength="60" placeholder="116.397428,39.909230" autocomplete="off">
+            <div class="location-actions"><button id="vehicle-location-example" type="button">填入北京示例</button><button id="vehicle-location-save" type="button">保存位置</button></div>
+          </details>
+          <p class="navigation-caption">位置由你手动设定，不读取GPS。设置后，在真实模型模式说“导航到北京南站”。重置会清空位置。</p>
+        </section>
         <section class="panel vehicle"><header class="section-heading"><h2>车辆状态</h2><span class="mini-badge">模拟车辆</span></header><div class="vehicle-visual"><svg viewBox="0 0 280 100" role="img" aria-label="模拟车辆示意图"><ellipse cx="140" cy="83" rx="108" ry="7" fill="#e8e8f4"/><path d="m36 61 20-9 26-27h76l38 26 35 9 12 14H32Z" fill="#e9e5ff" stroke="#8e7bdc" stroke-width="2"/><path d="m87 30-23 23h53V30Zm36 0v23h62l-30-23Z" fill="#fff" stroke="#b4a8e6"/><path d="M34 66h20m153-1h29M129 61h14" stroke="#8e7bdc" stroke-width="3" stroke-linecap="round"/><circle cx="78" cy="75" r="14" fill="#35344c"/><circle cx="78" cy="75" r="6" fill="#d2d0e4"/><circle cx="196" cy="75" r="14" fill="#35344c"/><circle cx="196" cy="75" r="6" fill="#d2d0e4"/></svg></div><div class="vehicle-metrics"><div><span><svg class="icon"><use href="#i-bolt"/></svg>剩余电量</span><strong id="battery">—<small>%</small></strong></div><div><span><svg class="icon"><use href="#i-temp"/></svg>空调温度</span><strong id="temperature">—<small>℃</small></strong></div></div><progress id="battery-bar" max="100" value="25" aria-label="剩余电量"></progress><p class="vehicle-caption">到达预留电量 10% · 数据随操作更新</p></section>
         <section class="panel analysis"><header class="section-heading"><h2>NLU 识别</h2><span class="mini-badge" id="decision-badge">等待输入</span></header><div id="nlu-empty" class="empty-state"><svg class="icon"><use href="#i-spark"/></svg><p>发送指令后查看识别结果</p><span>意图 · 槽位 · 相似度</span></div><div id="nlu-detail" hidden><dl class="decision-list"><div><dt>处理路径</dt><dd id="result-source">—</dd></div><div><dt>候选意图</dt><dd id="result-intent">—</dd></div><div><dt>参数</dt><dd id="result-arguments">—</dd></div></dl><div class="score-grid"><div><span>相似度</span><strong id="similarity">—</strong></div><div><span>意图分差</span><strong id="margin">—</strong></div><div><span>识别耗时</span><strong id="nlu-time">—</strong></div></div><div id="match-box" class="match-box" hidden><span>最相似示例</span><p id="matched-example"></p></div><p id="decision-reason" class="decision-reason"></p></div></section>
         <section class="panel execution"><header class="section-heading"><h2>执行过程</h2><button id="refresh" class="text-button compact" aria-label="刷新会话状态" disabled>刷新</button></header><div id="trace-empty" class="trace-empty">每次请求的工具调用将显示在这里</div><ol id="timeline" class="timeline"></ol><div class="execution-footer"><span>本轮总耗时</span><strong id="total-time">—</strong></div><details id="raw-details"><summary>查看原始事件</summary><pre id="raw-events">[]</pre></details></section>

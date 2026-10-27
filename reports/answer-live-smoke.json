@@ -1,0 +1,450 @@
+{
+  "scope": "真实规划和回答模型＋模拟业务工具，无高德调用",
+  "cases": [
+    {
+      "input": "电量只有25%，去机场要不要充电？帮我比较方案，给个建议",
+      "reply": "保留10%预留电量后，按当前模拟车况估算还能行驶约**50公里**；但这是基于60kWh教学默认容量、18kWh/100km默认能耗的参考值，且没有历史行驶样本，不能保证实际一定可达。\n\n建议**优先走“机场节能路线”直达，不必专门充电**：约65分钟、43公里，预计到达电量13%，满足10%预留；相比机场高速直达多17分钟、少9公里，到达电量高6个百分点。机场高速直达虽然只要48分钟，但预计到达仅7%，低于预留，不建议。\n\n如果你更看重到达余量，可考虑“机场高速+高速服务区充电”：模拟快照显示有2个可用端口，充电约20分钟，含绕行总行程约76分钟，预计到达37%。城东充电站当前显示0个可用端口，不建议选。以上均为模拟估算，充电端口不代表实时可用，也未预约或充电。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "get_vehicle_state",
+              "arguments": {},
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "get_route_options",
+              "arguments": {
+                "destination": "机场"
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "tool": "estimate_driving_range",
+              "arguments": {},
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t4",
+              "tool": "find_chargers",
+              "arguments": {
+                "route_id": ""
+              },
+              "depends_on": [
+                "t2"
+              ],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": [],
+            "t3": [],
+            "t4": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "get_vehicle_state",
+            "depends_on": [],
+            "arguments": {},
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "battery_percent": 25.0,
+                "temperature_c": 26.0,
+                "reserve_percent": 10.0,
+                "location": null,
+                "motion": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "headlights_on": false,
+                "seat_position_percent": 50.0,
+                "wiper_mode": "off",
+                "last_safety_decision": null
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "get_route_options",
+            "depends_on": [],
+            "arguments": {
+              "destination": "机场"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "destination": "机场",
+                "reserve_percent": 10.0,
+                "routes": [
+                  {
+                    "route_id": "airport_fast",
+                    "name": "机场高速",
+                    "duration_minutes": 48,
+                    "distance_km": 52,
+                    "battery_consumption_percent": 18.0,
+                    "arrival_battery_percent": 7.0,
+                    "meets_reserve": false
+                  },
+                  {
+                    "route_id": "airport_eco",
+                    "name": "机场节能路线",
+                    "duration_minutes": 65,
+                    "distance_km": 43,
+                    "battery_consumption_percent": 12.0,
+                    "arrival_battery_percent": 13.0,
+                    "meets_reserve": true
+                  }
+                ]
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t3",
+            "tool": "estimate_driving_range",
+            "depends_on": [],
+            "arguments": {},
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "vehicle_id": "demo_vehicle",
+                "battery_percent": 25.0,
+                "capacity_kwh": 60.0,
+                "capacity_source": "teaching_default",
+                "reserve_percent": 10.0,
+                "available_energy_kwh": 9.0,
+                "estimated_range_km": 50.0,
+                "range_to_empty_km": 83.3,
+                "consumption_kwh_per_100km": 18.0,
+                "basis": "default_assumption",
+                "sample_count": 0,
+                "total_records": 0,
+                "historical_distance_km": 0,
+                "method": "distance_weighted_recent_100",
+                "formula": "capacity_kwh × max(battery_percent - reserve_percent, 0) ÷ consumption_kwh_per_100km",
+                "warnings": [
+                  "参考估算，未建模实时气温、路况、坡度、车速、载重及电池衰减。",
+                  "没有历史行驶记录，使用18kWh/100km教学默认能耗，非实测续航。",
+                  "电池容量60kWh也是教学初始假设，请按本车可用容量修改。"
+                ],
+                "note": "当前SOC为本会话模拟值；历史是本机持久化的人工行程记录，不是LLM对话回忆。"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 62.0
+          },
+          {
+            "id": "t4",
+            "tool": "find_chargers",
+            "depends_on": [
+              "t2"
+            ],
+            "arguments": {
+              "route_id": ""
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "chargers": [
+                  {
+                    "charger_id": "C01",
+                    "name": "高速服务区充电站",
+                    "route_id": "airport_fast",
+                    "available_ports": 2,
+                    "power_kw": 120,
+                    "detour_minutes": 8,
+                    "charging_minutes": 20,
+                    "battery_gain_percent": 30.0,
+                    "total_trip_minutes": 76,
+                    "arrival_battery_percent": 37.0
+                  },
+                  {
+                    "charger_id": "C02",
+                    "name": "城东充电站",
+                    "route_id": "airport_eco",
+                    "available_ports": 0,
+                    "power_kw": 90,
+                    "detour_minutes": 12,
+                    "charging_minutes": 25,
+                    "battery_gain_percent": 30.0,
+                    "total_trip_minutes": 102,
+                    "arrival_battery_percent": 43.0
+                  }
+                ],
+                "note": "固定模拟快照，不代表实时可用性；未预约、未充电。"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "started_ms": 0.0,
+            "duration_ms": 62.0
+          }
+        ],
+        "counts": {
+          "succeeded": 4,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        },
+        "answer": {
+          "source": "model",
+          "duration_ms": 7530.29
+        }
+      }
+    },
+    {
+      "input": "关闭前照灯，并座椅调到60%，同时空调调到23度",
+      "reply": "空调已设为**23℃**（模拟车辆，读回核验通过）。\n\n另外两项没有完成：**前照灯未关闭、座椅未调到60%**。原因是车辆当前处于行驶中（约40km/h、D挡、未拉驻车制动），系统出于安全限制禁止在行驶中操作前照灯和调整座椅。\n\n请先安全停车、切换P挡并启用驻车制动，再重新下达这两项指令即可。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "tool": "set_headlights",
+              "arguments": {
+                "enabled": false
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "tool": "adjust_seat",
+              "arguments": {
+                "position_percent": 60
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              },
+              "depends_on": [],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": [],
+            "t3": []
+          }
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "tool": "set_headlights",
+            "depends_on": [],
+            "arguments": {
+              "enabled": false
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "set_headlights",
+                "rule_id": "HEADLIGHTS_PARK_ONLY",
+                "reason": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止前照灯开关。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "关闭前照灯"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t2",
+            "tool": "adjust_seat",
+            "depends_on": [],
+            "arguments": {
+              "position_percent": 60
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "blocked",
+            "attempts": 1,
+            "result": {
+              "ok": false,
+              "simulated": true,
+              "error": {
+                "code": "SAFETY_BLOCKED",
+                "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+              },
+              "safety": {
+                "allowed": false,
+                "action": "adjust_seat",
+                "rule_id": "SEAT_PARK_ONLY",
+                "reason": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": {
+              "code": "SAFETY_BLOCKED",
+              "message": "行驶中，禁止调整座椅。请先停车、切换P挡并启用驻车制动，再重新下达指令。"
+            },
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "座椅调到60%"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          },
+          {
+            "id": "t3",
+            "tool": "set_temperature",
+            "depends_on": [],
+            "arguments": {
+              "temperature": 23
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 23.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "moving",
+                  "label": "行驶中",
+                  "speed_kph": 40.0,
+                  "gear": "D",
+                  "parking_brake": false,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "空调调到23度"
+            },
+            "started_ms": 0.0,
+            "duration_ms": 0.0
+          }
+        ],
+        "counts": {
+          "succeeded": 1,
+          "blocked": 2,
+          "failed": 0,
+          "skipped": 0
+        },
+        "answer": {
+          "source": "model",
+          "duration_ms": 1887.38
+        }
+      }
+    }
+  ]
+}

@@ -112,8 +112,15 @@ def parse_intent(text: str) -> Intent | None:
     # fullmatch 是关键：“不要把空调调到24度”不能因为包含数字就触发写操作。
     original = text
     text = normalize_text(text).rstrip("。！!？?")
+    if re.fullmatch(r'(?:请|帮我)?(?:(?:当前|现在|这辆车|汽车|车辆)?(?:电量)?还能(?:行驶|开|跑)(?:多远|多少公里)|(?:计算|估算|查询|查看)(?:一下)?(?:剩余)?续航(?:里程)?)', text):
+        return Intent('estimate_driving_range', 'estimate_driving_range', {})
+    if re.fullmatch(r'(?:请|帮我)?(?:查看|查询)(?:一下)?(?:历史行驶记录|行驶历史|长期行驶记忆)', text):
+        return Intent('get_driving_history', 'get_driving_history', {})
     if re.fullmatch(r"(?:请|帮我)?(?:查看|查询)(?:一下)?车辆状态", text):
         return Intent("query_vehicle", "get_vehicle_state", {})
+    control = parse_vehicle_control(original)
+    if control is not None:
+        return control
     match = re.fullmatch(
         r"(?:请|帮我)?(?:把)?空调(?:温度)?(?:调到|设为|设置为|设置到)"
         r"(-?\d+(?:\.\d+)?)(?:度|℃|°C)", text, re.IGNORECASE,
@@ -123,4 +130,28 @@ def parse_intent(text: str) -> Intent | None:
             return None
         # 范围校验由共享工具层完成，规则和模型不各自维护一套规则。
         return Intent("set_temperature", "set_temperature", {"temperature": float(match[1])})
+    return None
+
+
+def parse_vehicle_control(text: str) -> Intent | None:
+    """新增车控只做完整规则匹配；不删除问号，也不复用温度向量分数授予写权限。"""
+    text = normalize_text(text).rstrip("。！!")
+    prefix = r"(?:请|帮我|请帮我)?(?:把|将)?"
+    for enabled, verb in [(True, r"(?:打开|开启|开)"), (False, r"(?:关闭|关掉|关)")]:
+        for tool, subject in [("set_headlights", r"(?:前照灯|大灯|车灯)"),
+                              ("set_wipers", r"(?:雨刮器?|雨刷)")]:
+            if re.fullmatch(prefix + rf"(?:{verb}(?:一下)?{subject}|{subject}{verb}(?:一下)?)", text):
+                arguments = {"enabled": enabled} if tool == "set_headlights" else {"mode": "low" if enabled else "off"}
+                return Intent(tool, tool, arguments)
+    match = re.fullmatch(prefix + r"(?:雨刮器?|雨刷)(?:调到|设为|设置为|设置到)(低速|高速|关闭)", text)
+    if match:
+        return Intent("set_wipers", "set_wipers", {"mode": {"低速": "low", "高速": "high", "关闭": "off"}[match[1]]})
+    match = re.fullmatch(prefix + r"(?:驾驶员)?座椅(?:位置)?(?:调到|设为|设置为|设置到)"
+                         r"(?:(-?\d+(?:\.\d+)?)%|百分之([负零〇一二两三四五六七八九十百点]+))", text)
+    if match:
+        try:
+            value = float(match[1]) if match[1] is not None else parse_number(match[2])
+        except (ValueError, KeyError):
+            return None
+        return Intent("adjust_seat", "adjust_seat", {"position_percent": value})
     return None

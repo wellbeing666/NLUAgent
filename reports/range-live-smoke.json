@@ -1,0 +1,137 @@
+{
+  "scope": "真实模型规划＋临时虚构行程；不修改用户数据库、不调用高德",
+  "input": "根据历史能耗估算剩余续航，并查看历史行驶记录",
+  "reply": "当前是模拟车辆、人工录入数据：电量按25%计，**保留10%预留电量后，可行驶约52.9公里**；理论耗尽约88.2公里，但不建议把耗尽电量作为目标。\n\n依据是最近1条人工行程记录：行驶50公里、耗电8.5kWh，折算约17.0kWh/100km。由于历史样本只有1条，而且未计入气温、路况、坡度、车速、载重和电池衰减，所以这个估算仅供演示参考。\n\n历史行驶记录目前也只有这1条：50公里／8.5kWh。",
+  "execution": {
+    "plan": {
+      "tasks": [
+        {
+          "id": "t1",
+          "tool": "estimate_driving_range",
+          "arguments": {},
+          "depends_on": [],
+          "condition": null
+        },
+        {
+          "id": "t2",
+          "tool": "get_driving_history",
+          "arguments": {
+            "limit": 10
+          },
+          "depends_on": [],
+          "condition": null
+        }
+      ],
+      "clarification": "",
+      "resource_order_edges": {
+        "t1": [],
+        "t2": []
+      }
+    },
+    "tasks": [
+      {
+        "id": "t1",
+        "tool": "estimate_driving_range",
+        "depends_on": [],
+        "arguments": {},
+        "condition": null,
+        "order_only": [],
+        "status": "succeeded",
+        "attempts": 1,
+        "result": {
+          "ok": true,
+          "simulated": true,
+          "data": {
+            "vehicle_id": "demo_vehicle",
+            "battery_percent": 25.0,
+            "capacity_kwh": 60.0,
+            "capacity_source": "manual_entry",
+            "reserve_percent": 10.0,
+            "available_energy_kwh": 9.0,
+            "estimated_range_km": 52.9,
+            "range_to_empty_km": 88.2,
+            "consumption_kwh_per_100km": 17.0,
+            "basis": "history",
+            "sample_count": 1,
+            "total_records": 1,
+            "historical_distance_km": 50.0,
+            "method": "distance_weighted_recent_100",
+            "formula": "capacity_kwh × max(battery_percent - reserve_percent, 0) ÷ consumption_kwh_per_100km",
+            "warnings": [
+              "参考估算，未建模实时气温、路况、坡度、车速、载重及电池衰减。",
+              "历史少于3条，样本不足，结果仅供演示。"
+            ],
+            "note": "当前SOC为本会话模拟值；历史是本机持久化的人工行程记录，不是LLM对话回忆。"
+          }
+        },
+        "error": null,
+        "authorization": {
+          "required": false,
+          "allowed": true,
+          "source": ""
+        },
+        "started_ms": 0.0,
+        "duration_ms": 16.0
+      },
+      {
+        "id": "t2",
+        "tool": "get_driving_history",
+        "depends_on": [],
+        "arguments": {
+          "limit": 10
+        },
+        "condition": null,
+        "order_only": [],
+        "status": "succeeded",
+        "attempts": 1,
+        "result": {
+          "ok": true,
+          "simulated": true,
+          "data": {
+            "vehicle_id": "demo_vehicle",
+            "capacity_kwh": 60.0,
+            "capacity_source": "manual_entry",
+            "total_records": 1,
+            "window_size": 100,
+            "sample_count": 1,
+            "total_distance_km": 50.0,
+            "total_energy_kwh": 8.5,
+            "consumption_kwh_per_100km": 17.0,
+            "basis": "history",
+            "records": [
+              {
+                "id": 1,
+                "vehicle_id": "demo_vehicle",
+                "record_id": "253ca56e-88ff-4664-a434-5bf352a09543",
+                "recorded_at": "2026-10-27T12:50:26.686632+00:00",
+                "distance_km": 50.0,
+                "energy_kwh": 8.5,
+                "source": "manual_entry",
+                "consumption_kwh_per_100km": 17.0
+              }
+            ],
+            "note": "按最近录入的最多100条本车记录估算；人工录入不代表车载遥测。"
+          }
+        },
+        "error": null,
+        "authorization": {
+          "required": false,
+          "allowed": true,
+          "source": ""
+        },
+        "started_ms": 0.0,
+        "duration_ms": 16.0
+      }
+    ],
+    "counts": {
+      "succeeded": 2,
+      "blocked": 0,
+      "failed": 0,
+      "skipped": 0
+    },
+    "answer": {
+      "source": "model",
+      "duration_ms": 2428.01
+    }
+  }
+}
