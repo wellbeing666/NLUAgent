@@ -54,7 +54,7 @@ class WebSession:
 
     def trace(self, event, payload):
         with self.event_lock:
-            if len(self.events) < 200:
+            if len(self.events) < 1000:
                 self.events.append({"event": event, "data": json_safe(payload)})
 
     def snapshot(self):
@@ -87,6 +87,11 @@ class WebSession:
         error = any(e["event"] == "agent.error" for e in self.events)
         rejected = any(e["event"] == "tool.result" and not e["data"]["result"]["ok"] for e in self.events)
         safety_blocked = any(e["event"] == "tool.result" and e["data"]["result"].get("error", {}).get("code") == "SAFETY_BLOCKED" for e in self.events)
+        execution = self.app.last_execution
+        if execution and execution.get('tasks'):
+            # 旧步骤失败但后来恢复时，整体标记以有效目标的最终状态为准。
+            rejected = any(task['status'] != 'succeeded' for task in execution['tasks'])
+            safety_blocked = any((task.get('error') or {}).get('code') == 'SAFETY_BLOCKED' for task in execution['tasks'])
         now = datetime.now().astimezone().strftime("%H:%M")
         self.last = {"reply": reply, "nlu": decision, "route": route, "events": list(self.events),
                      "duration_ms": round((perf_counter() - start) * 1000, 2),

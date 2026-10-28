@@ -1,0 +1,1443 @@
+{
+  "scope": "真实LLM的Planner/ReAct/Replanner/Responder；地图固定响应、人工故障注入、临时虚构记忆，不请求高德。",
+  "cases": [
+    {
+      "input": "把空调调到24度，并分析当前电量去机场是否需要充电，给出建议",
+      "reply": "模拟空调已设置为24℃，读回核验通过。\n\n当前模拟电量为25%，系统按预留10%电量分析：机场高速耗电18%，到达约7%，低于预留线，不建议直接走；机场节能路线耗电12%，到达约13%，满足预留要求。因此建议走节能路线，途中无需充电，代价是预计65分钟，比高速多17分钟。\n\n如果赶时间想走机场高速，就需要途中补电：模拟快照显示高速服务区充电站有2个可用端口，补电约20分钟可增加30%，到达电量约37%，总行程约76分钟；城东充电站显示0个可用端口。以上均为模拟路线和固定快照，不代表实时路况或充电桩可用性，实际到达电量也可能有偏差。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "kind": "vehicle_control",
+              "goal": "将模拟空调温度设置为24℃",
+              "inputs": {
+                "tool": "set_temperature",
+                "arguments": {
+                  "temperature": 24
+                }
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "kind": "airport_advice",
+              "goal": "结合当前模拟电量与去机场的模拟路线续航/耗电情况，分析是否需要途中充电并给出建议",
+              "inputs": {
+                "view": "advice",
+                "destination": "机场"
+              },
+              "depends_on": [],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": []
+          },
+          "version": 1
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "kind": "vehicle_control",
+            "goal": "将模拟空调温度设置为24℃",
+            "inputs": {
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 24
+              }
+            },
+            "depends_on": [],
+            "tool": "set_temperature",
+            "arguments": {
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 24
+              }
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 24.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "把空调调到24度"
+            },
+            "steps": [
+              {
+                "id": "t1_s1",
+                "tool": "set_temperature",
+                "arguments": {
+                  "temperature": 24
+                },
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "temperature_c": 24.0,
+                    "verified": true
+                  },
+                  "safety": {
+                    "allowed": true,
+                    "action": "set_temperature",
+                    "rule_id": "TEMPERATURE_ALLOWED",
+                    "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                    "vehicle": {
+                      "status": "parked",
+                      "label": "已停车",
+                      "speed_kph": 0.0,
+                      "gear": "P",
+                      "parking_brake": true,
+                      "source": "manual_simulation",
+                      "simulated": true
+                    },
+                    "policy_version": "cockpit-demo-v1"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 1,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 2203.0,
+            "duration_ms": 2813.0
+          },
+          {
+            "id": "t2",
+            "kind": "airport_advice",
+            "goal": "结合当前模拟电量与去机场的模拟路线续航/耗电情况，分析是否需要途中充电并给出建议",
+            "inputs": {
+              "view": "advice",
+              "destination": "机场"
+            },
+            "depends_on": [],
+            "tool": "get_route_options",
+            "arguments": {
+              "view": "advice",
+              "destination": "机场"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 3,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "destination": "机场",
+                "reserve_percent": 10.0,
+                "routes": [
+                  {
+                    "route_id": "airport_fast",
+                    "name": "机场高速",
+                    "duration_minutes": 48,
+                    "distance_km": 52,
+                    "battery_consumption_percent": 18.0,
+                    "arrival_battery_percent": 7.0,
+                    "meets_reserve": false
+                  },
+                  {
+                    "route_id": "airport_eco",
+                    "name": "机场节能路线",
+                    "duration_minutes": 65,
+                    "distance_km": 43,
+                    "battery_consumption_percent": 12.0,
+                    "arrival_battery_percent": 13.0,
+                    "meets_reserve": true
+                  }
+                ]
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "steps": [
+              {
+                "id": "t2_s2",
+                "tool": "get_vehicle_state",
+                "arguments": {},
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "battery_percent": 25.0,
+                    "temperature_c": 24.0,
+                    "reserve_percent": 10.0,
+                    "location": {
+                      "name": "北京天安门（模拟）",
+                      "location": "116.397428,39.909230",
+                      "source": "manual_simulation",
+                      "simulated": true,
+                      "coordinate_system": "GCJ-02",
+                      "updated_at": "2026-10-28T03:45:59.429684+00:00"
+                    },
+                    "motion": {
+                      "status": "parked",
+                      "label": "已停车",
+                      "speed_kph": 0.0,
+                      "gear": "P",
+                      "parking_brake": true,
+                      "source": "manual_simulation",
+                      "simulated": true
+                    },
+                    "headlights_on": false,
+                    "seat_position_percent": 50.0,
+                    "wiper_mode": "off",
+                    "last_safety_decision": {
+                      "allowed": true,
+                      "action": "set_temperature",
+                      "rule_id": "TEMPERATURE_ALLOWED",
+                      "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                      "vehicle": {
+                        "status": "parked",
+                        "label": "已停车",
+                        "speed_kph": 0.0,
+                        "gear": "P",
+                        "parking_brake": true,
+                        "source": "manual_simulation",
+                        "simulated": true
+                      },
+                      "policy_version": "cockpit-demo-v1"
+                    }
+                  }
+                },
+                "called": true
+              },
+              {
+                "id": "t2_s3",
+                "tool": "get_route_options",
+                "arguments": {
+                  "destination": "机场"
+                },
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "destination": "机场",
+                    "reserve_percent": 10.0,
+                    "routes": [
+                      {
+                        "route_id": "airport_fast",
+                        "name": "机场高速",
+                        "duration_minutes": 48,
+                        "distance_km": 52,
+                        "battery_consumption_percent": 18.0,
+                        "arrival_battery_percent": 7.0,
+                        "meets_reserve": false
+                      },
+                      {
+                        "route_id": "airport_eco",
+                        "name": "机场节能路线",
+                        "duration_minutes": 65,
+                        "distance_km": 43,
+                        "battery_consumption_percent": 12.0,
+                        "arrival_battery_percent": 13.0,
+                        "meets_reserve": true
+                      }
+                    ]
+                  }
+                },
+                "called": true
+              },
+              {
+                "id": "t2_s4",
+                "tool": "find_chargers",
+                "arguments": {},
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "chargers": [
+                      {
+                        "charger_id": "C01",
+                        "name": "高速服务区充电站",
+                        "route_id": "airport_fast",
+                        "available_ports": 2,
+                        "power_kw": 120,
+                        "detour_minutes": 8,
+                        "charging_minutes": 20,
+                        "battery_gain_percent": 30.0,
+                        "total_trip_minutes": 76,
+                        "arrival_battery_percent": 37.0
+                      },
+                      {
+                        "charger_id": "C02",
+                        "name": "城东充电站",
+                        "route_id": "airport_eco",
+                        "available_ports": 0,
+                        "power_kw": 90,
+                        "detour_minutes": 12,
+                        "charging_minutes": 25,
+                        "battery_gain_percent": 30.0,
+                        "total_trip_minutes": 102,
+                        "arrival_battery_percent": 43.0
+                      }
+                    ],
+                    "note": "固定模拟快照，不代表实时可用性；未预约、未充电。"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 1,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 2203.0,
+            "duration_ms": 4547.0
+          }
+        ],
+        "counts": {
+          "succeeded": 2,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        },
+        "run": {
+          "run_id": "e7e7270c074a4e868939055615ffaef2",
+          "model_calls": 9,
+          "replans": 0,
+          "versions": [
+            {
+              "version": 1,
+              "reason": "初始全局规划",
+              "plan": {
+                "tasks": [
+                  {
+                    "id": "t1",
+                    "kind": "vehicle_control",
+                    "goal": "将模拟空调温度设置为24℃",
+                    "inputs": {
+                      "tool": "set_temperature",
+                      "arguments": {
+                        "temperature": 24
+                      }
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  },
+                  {
+                    "id": "t2",
+                    "kind": "airport_advice",
+                    "goal": "结合当前模拟电量与去机场的模拟路线续航/耗电情况，分析是否需要途中充电并给出建议",
+                    "inputs": {
+                      "view": "advice",
+                      "destination": "机场"
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  }
+                ],
+                "clarification": "",
+                "resource_order_edges": {
+                  "t1": [],
+                  "t2": []
+                },
+                "version": 1
+              }
+            }
+          ],
+          "write_ledger": [
+            {
+              "grant_index": 0,
+              "task_id": "t1",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 24
+              },
+              "source": "把空调调到24度",
+              "status": "succeeded"
+            }
+          ],
+          "audit": [],
+          "clarification": "",
+          "duration_ms": 9422.0
+        },
+        "answer": {
+          "source": "model",
+          "duration_ms": 2679.68
+        }
+      }
+    },
+    {
+      "input": "把空调调到23度，并导航到北京南站",
+      "reply": "模拟空调已设置为23℃，读回核验通过。\n\n导航已规划好从北京天安门（模拟位置）到北京南站的路线，有两个备选：高德推荐约48.0公里、60分钟，含15元过路费；另一条约51.0公里、65分钟、无过路费。这只是已规划路线，尚未启动车机实时导航，也没有开车或到达。\n\n需要说明：目的地是按近似直线距离最近的同名候选点选定的，但规划出的路线距离与直线距离差异较大，出发前建议在导航面板确认终点；此外，这条高德路线未接入车辆耗电模型，无法据此估算电量消耗。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "kind": "vehicle_control",
+              "goal": "将模拟空调温度设置为23℃",
+              "inputs": {
+                "tool": "set_temperature",
+                "arguments": {
+                  "temperature": 23
+                }
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t3",
+              "kind": "vehicle_state",
+              "goal": "刷新当前车辆位置与状态，获取最新位置版本供导航规划使用",
+              "inputs": {
+                "view": "location"
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t4",
+              "kind": "navigation",
+              "goal": "导航到北京南站，采用推荐策略",
+              "inputs": {
+                "mode": "destination",
+                "destination": "北京南站",
+                "strategy": "recommended"
+              },
+              "depends_on": [
+                "t3"
+              ],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t3": [],
+            "t4": []
+          },
+          "version": 2
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "kind": "vehicle_control",
+            "goal": "将模拟空调温度设置为23℃",
+            "inputs": {
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              }
+            },
+            "depends_on": [],
+            "tool": "set_temperature",
+            "arguments": {
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              }
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "temperature_c": 23.0,
+                "verified": true
+              },
+              "safety": {
+                "allowed": true,
+                "action": "set_temperature",
+                "rule_id": "TEMPERATURE_ALLOWED",
+                "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                "vehicle": {
+                  "status": "parked",
+                  "label": "已停车",
+                  "speed_kph": 0.0,
+                  "gear": "P",
+                  "parking_brake": true,
+                  "source": "manual_simulation",
+                  "simulated": true
+                },
+                "policy_version": "cockpit-demo-v1"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": true,
+              "allowed": true,
+              "source": "把空调调到23度"
+            },
+            "steps": [
+              {
+                "id": "t1_s1",
+                "tool": "set_temperature",
+                "arguments": {
+                  "temperature": 23
+                },
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "temperature_c": 23.0,
+                    "verified": true
+                  },
+                  "safety": {
+                    "allowed": true,
+                    "action": "set_temperature",
+                    "rule_id": "TEMPERATURE_ALLOWED",
+                    "reason": "空调设置不受行驶状态限制，仍需参数与写授权检查。",
+                    "vehicle": {
+                      "status": "parked",
+                      "label": "已停车",
+                      "speed_kph": 0.0,
+                      "gear": "P",
+                      "parking_brake": true,
+                      "source": "manual_simulation",
+                      "simulated": true
+                    },
+                    "policy_version": "cockpit-demo-v1"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 1,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 1750.0,
+            "duration_ms": 2094.0
+          },
+          {
+            "id": "t3",
+            "kind": "vehicle_state",
+            "goal": "刷新当前车辆位置与状态，获取最新位置版本供导航规划使用",
+            "inputs": {
+              "view": "location"
+            },
+            "depends_on": [],
+            "tool": "get_vehicle_location",
+            "arguments": {
+              "view": "location"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "name": "北京天安门（模拟）",
+                "location": "116.397428,39.909230",
+                "source": "manual_simulation",
+                "simulated": true,
+                "coordinate_system": "GCJ-02",
+                "updated_at": "2026-10-28T03:45:59.429684+00:00"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "steps": [
+              {
+                "id": "t3_s1",
+                "tool": "get_vehicle_location",
+                "arguments": {},
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "name": "北京天安门（模拟）",
+                    "location": "116.397428,39.909230",
+                    "source": "manual_simulation",
+                    "simulated": true,
+                    "coordinate_system": "GCJ-02",
+                    "updated_at": "2026-10-28T03:45:59.429684+00:00"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 2,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 12469.0,
+            "duration_ms": 1718.0
+          },
+          {
+            "id": "t4",
+            "kind": "navigation",
+            "goal": "导航到北京南站，采用推荐策略",
+            "inputs": {
+              "mode": "destination",
+              "destination": "北京南站",
+              "strategy": "recommended"
+            },
+            "depends_on": [
+              "t3"
+            ],
+            "tool": "navigate_to_destination",
+            "arguments": {
+              "mode": "destination",
+              "destination": "北京南站",
+              "strategy": "recommended"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": false,
+              "data": {
+                "provider": "amap",
+                "coordinate_system": "GCJ-02",
+                "origin": {
+                  "name": "北京天安门（模拟）",
+                  "location": "116.397428,39.909230"
+                },
+                "destination": {
+                  "name": "北京南站",
+                  "location": "116.378517,39.865246",
+                  "id": "TEST_ORIGIN"
+                },
+                "strategy": "recommended",
+                "routes": [
+                  {
+                    "name": "高德推荐",
+                    "distance_km": 48.0,
+                    "duration_minutes": 60.0,
+                    "tolls_yuan": 15.0,
+                    "steps": [
+                      {
+                        "instruction": "沿测试道路向东行驶",
+                        "road": "测试道路",
+                        "distance_m": 1000.0
+                      }
+                    ],
+                    "route_id": "hpigxASIEpooRMqw"
+                  },
+                  {
+                    "name": "高德驾车路线",
+                    "distance_km": 51.0,
+                    "duration_minutes": 65.0,
+                    "tolls_yuan": 0.0,
+                    "steps": [],
+                    "route_id": "-TnKunss7Ws-JJQ9"
+                  }
+                ],
+                "web_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.378517%2C39.865246%2C%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=0",
+                "app_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.378517%2C39.865246%2C%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=1",
+                "note": "真实高德路线快照；导航链接会由高德重新算路，不保证与所选备选路线完全一致。未接入真实车辆定位或耗电模型。",
+                "automatic": true,
+                "origin_simulated": true,
+                "selection": {
+                  "query": "北京南站",
+                  "selected": {
+                    "name": "北京南站",
+                    "location": "116.378517,39.865246",
+                    "id": "TEST_ORIGIN",
+                    "address": "",
+                    "distance_m": 5150.1
+                  },
+                  "candidates": [
+                    {
+                      "name": "北京南站",
+                      "location": "116.378517,39.865246",
+                      "id": "TEST_ORIGIN",
+                      "address": "",
+                      "distance_m": 5150.1
+                    },
+                    {
+                      "name": "北京南站",
+                      "location": "116.450000,39.800000",
+                      "id": "TEST_FAR",
+                      "address": "",
+                      "distance_m": 12948.3
+                    }
+                  ],
+                  "candidate_count": 2,
+                  "search_scope": "within_50km",
+                  "distance_metric": "approx_straight_line",
+                  "basis": "在本次返回且名称匹配的候选中，选择坐标近似直线距离最近者；不是最短驾车距离或全量地点检索。"
+                },
+                "origin_source": "manual_simulation"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "steps": [
+              {
+                "id": "t4_s1",
+                "tool": "navigate_to_destination",
+                "arguments": {
+                  "destination": "北京南站",
+                  "strategy": "recommended"
+                },
+                "result": {
+                  "ok": true,
+                  "simulated": false,
+                  "data": {
+                    "provider": "amap",
+                    "coordinate_system": "GCJ-02",
+                    "origin": {
+                      "name": "北京天安门（模拟）",
+                      "location": "116.397428,39.909230"
+                    },
+                    "destination": {
+                      "name": "北京南站",
+                      "location": "116.378517,39.865246",
+                      "id": "TEST_ORIGIN"
+                    },
+                    "strategy": "recommended",
+                    "routes": [
+                      {
+                        "name": "高德推荐",
+                        "distance_km": 48.0,
+                        "duration_minutes": 60.0,
+                        "tolls_yuan": 15.0,
+                        "steps": [
+                          {
+                            "instruction": "沿测试道路向东行驶",
+                            "road": "测试道路",
+                            "distance_m": 1000.0
+                          }
+                        ],
+                        "route_id": "hpigxASIEpooRMqw"
+                      },
+                      {
+                        "name": "高德驾车路线",
+                        "distance_km": 51.0,
+                        "duration_minutes": 65.0,
+                        "tolls_yuan": 0.0,
+                        "steps": [],
+                        "route_id": "-TnKunss7Ws-JJQ9"
+                      }
+                    ],
+                    "web_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.378517%2C39.865246%2C%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=0",
+                    "app_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.378517%2C39.865246%2C%E5%8C%97%E4%BA%AC%E5%8D%97%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=1",
+                    "note": "真实高德路线快照；导航链接会由高德重新算路，不保证与所选备选路线完全一致。未接入真实车辆定位或耗电模型。",
+                    "automatic": true,
+                    "origin_simulated": true,
+                    "selection": {
+                      "query": "北京南站",
+                      "selected": {
+                        "name": "北京南站",
+                        "location": "116.378517,39.865246",
+                        "id": "TEST_ORIGIN",
+                        "address": "",
+                        "distance_m": 5150.1
+                      },
+                      "candidates": [
+                        {
+                          "name": "北京南站",
+                          "location": "116.378517,39.865246",
+                          "id": "TEST_ORIGIN",
+                          "address": "",
+                          "distance_m": 5150.1
+                        },
+                        {
+                          "name": "北京南站",
+                          "location": "116.450000,39.800000",
+                          "id": "TEST_FAR",
+                          "address": "",
+                          "distance_m": 12948.3
+                        }
+                      ],
+                      "candidate_count": 2,
+                      "search_scope": "within_50km",
+                      "distance_metric": "approx_straight_line",
+                      "basis": "在本次返回且名称匹配的候选中，选择坐标近似直线距离最近者；不是最短驾车距离或全量地点检索。"
+                    },
+                    "origin_source": "manual_simulation"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 2,
+            "superseded_by": null,
+            "recovered_from": [
+              "t2"
+            ],
+            "auto_finalized": false,
+            "started_ms": 14187.0,
+            "duration_ms": 2313.0
+          }
+        ],
+        "counts": {
+          "succeeded": 3,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        },
+        "run": {
+          "run_id": "b7b71bf1d55243b886d34e574dc5b905",
+          "model_calls": 15,
+          "replans": 1,
+          "versions": [
+            {
+              "version": 1,
+              "reason": "初始全局规划",
+              "plan": {
+                "tasks": [
+                  {
+                    "id": "t1",
+                    "kind": "vehicle_control",
+                    "goal": "将模拟空调温度设置为23℃",
+                    "inputs": {
+                      "tool": "set_temperature",
+                      "arguments": {
+                        "temperature": 23
+                      }
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  },
+                  {
+                    "id": "t2",
+                    "kind": "navigation",
+                    "goal": "导航到北京南站，采用推荐策略",
+                    "inputs": {
+                      "mode": "destination",
+                      "destination": "北京南站",
+                      "strategy": "recommended"
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  }
+                ],
+                "clarification": "",
+                "resource_order_edges": {
+                  "t1": [],
+                  "t2": []
+                },
+                "version": 1
+              }
+            },
+            {
+              "version": 2,
+              "reason": "t2 因 NAVIGATION_STALE（位置版本在查询期间变化）失败，属于需要刷新前置车辆状态后再规划的可恢复情形。先以只读任务刷新车辆位置/状态，再以新任务沿用原目标与参数（目的地北京南站、推荐策略）重试导航；已完成的车控任务 t1 保持不变，不再重放。",
+              "plan": {
+                "tasks": [
+                  {
+                    "id": "t1",
+                    "kind": "vehicle_control",
+                    "goal": "将模拟空调温度设置为23℃",
+                    "inputs": {
+                      "tool": "set_temperature",
+                      "arguments": {
+                        "temperature": 23
+                      }
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  },
+                  {
+                    "id": "t3",
+                    "kind": "vehicle_state",
+                    "goal": "刷新当前车辆位置与状态，获取最新位置版本供导航规划使用",
+                    "inputs": {
+                      "view": "location"
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  },
+                  {
+                    "id": "t4",
+                    "kind": "navigation",
+                    "goal": "导航到北京南站，采用推荐策略",
+                    "inputs": {
+                      "mode": "destination",
+                      "destination": "北京南站",
+                      "strategy": "recommended"
+                    },
+                    "depends_on": [
+                      "t3"
+                    ],
+                    "condition": null
+                  }
+                ],
+                "clarification": "",
+                "resource_order_edges": {
+                  "t1": [],
+                  "t3": [],
+                  "t4": []
+                },
+                "version": 2
+              }
+            }
+          ],
+          "write_ledger": [
+            {
+              "grant_index": 0,
+              "task_id": "t1",
+              "tool": "set_temperature",
+              "arguments": {
+                "temperature": 23
+              },
+              "source": "把空调调到23度",
+              "status": "succeeded"
+            }
+          ],
+          "audit": [
+            {
+              "id": "t2",
+              "kind": "navigation",
+              "goal": "导航到北京南站，采用推荐策略",
+              "inputs": {
+                "mode": "destination",
+                "destination": "北京南站",
+                "strategy": "recommended"
+              },
+              "depends_on": [],
+              "tool": "navigate_to_destination",
+              "arguments": {
+                "mode": "destination",
+                "destination": "北京南站",
+                "strategy": "recommended"
+              },
+              "condition": null,
+              "order_only": [],
+              "status": "failed",
+              "attempts": 5,
+              "result": {
+                "ok": false,
+                "simulated": true,
+                "error": {
+                  "code": "NAVIGATION_STALE",
+                  "message": "[故障注入]查询期间位置版本已变化，请刷新前置状态后重新规划。"
+                }
+              },
+              "error": {
+                "code": "NAVIGATION_STALE",
+                "message": "[故障注入]查询期间位置版本已变化，请刷新前置状态后重新规划。"
+              },
+              "authorization": {
+                "required": false,
+                "allowed": true,
+                "source": ""
+              },
+              "steps": [
+                {
+                  "id": "t2_s1",
+                  "tool": "navigate_to_destination",
+                  "arguments": {
+                    "destination": "北京南站",
+                    "strategy": "recommended"
+                  },
+                  "result": {
+                    "ok": false,
+                    "simulated": true,
+                    "error": {
+                      "code": "NAVIGATION_STALE",
+                      "message": "[故障注入]查询期间位置版本已变化，请刷新前置状态后重新规划。"
+                    }
+                  },
+                  "called": true
+                },
+                {
+                  "id": "t2_s2",
+                  "tool": "get_vehicle_location",
+                  "arguments": {},
+                  "result": {
+                    "ok": true,
+                    "simulated": true,
+                    "data": {
+                      "name": "北京天安门（模拟）",
+                      "location": "116.397428,39.909230",
+                      "source": "manual_simulation",
+                      "simulated": true,
+                      "coordinate_system": "GCJ-02",
+                      "updated_at": "2026-10-28T03:45:59.429684+00:00"
+                    }
+                  },
+                  "called": true
+                },
+                {
+                  "id": "t2_s3",
+                  "tool": "navigate_to_destination",
+                  "arguments": {
+                    "destination": "北京南站",
+                    "strategy": "recommended"
+                  },
+                  "result": {
+                    "ok": false,
+                    "simulated": true,
+                    "error": {
+                      "code": "NAVIGATION_STALE",
+                      "message": "[故障注入]查询期间位置版本已变化，请刷新前置状态后重新规划。"
+                    }
+                  },
+                  "called": true
+                },
+                {
+                  "id": "t2_s4",
+                  "tool": "search_navigation_places",
+                  "arguments": {
+                    "keywords": "北京南站",
+                    "city": "北京"
+                  },
+                  "result": {
+                    "ok": true,
+                    "simulated": false,
+                    "data": {
+                      "provider": "amap",
+                      "coordinate_system": "GCJ-02",
+                      "places": [
+                        {
+                          "name": "北京南站",
+                          "location": "116.378517,39.865246",
+                          "id": "TEST_ORIGIN",
+                          "address": "北京市 丰台区 测试地址"
+                        }
+                      ],
+                      "note": "请选择具体地点，未自动选中首个搜索结果。"
+                    }
+                  },
+                  "called": true
+                },
+                {
+                  "id": "t2_s5",
+                  "tool": "plan_navigation_route",
+                  "arguments": {
+                    "origin": {
+                      "name": "北京天安门（模拟）",
+                      "location": "116.397428,39.909230"
+                    },
+                    "destination": {
+                      "name": "北京南站",
+                      "location": "116.378517,39.865246",
+                      "id": "TEST_ORIGIN"
+                    },
+                    "strategy": "recommended"
+                  },
+                  "result": {
+                    "ok": false,
+                    "simulated": true,
+                    "error": {
+                      "code": "NAVIGATION_STALE",
+                      "message": "[故障注入]查询期间位置版本已变化，请刷新前置状态后重新规划。"
+                    }
+                  },
+                  "called": true
+                }
+              ],
+              "needs_replan": true,
+              "version": 1,
+              "superseded_by": "t4",
+              "recovered_from": [],
+              "auto_finalized": false,
+              "started_ms": 1750.0,
+              "duration_ms": 6969.0
+            }
+          ],
+          "clarification": "",
+          "duration_ms": 18172.0
+        },
+        "answer": {
+          "source": "model",
+          "duration_ms": 1681.1
+        }
+      }
+    },
+    {
+      "input": "改去北京西站，刚才的空调保持不动",
+      "reply": "回答整理暂不可用，以下是已确认的实际结果：\n模拟车辆位置：北京天安门（模拟）（116.397428,39.909230）。\n自动选择最近的名称匹配候选“北京西站”（近似直线距离6.94公里）；已规划北京天安门（模拟）→北京西站：48.0公里／60.0分钟；51.0公里／65.0分钟。可查看导航面板；未启动导航，无真实耗电估算。",
+      "execution": {
+        "plan": {
+          "tasks": [
+            {
+              "id": "t1",
+              "kind": "vehicle_state",
+              "goal": "重新查询当前车辆位置与状态，作为本轮导航起点",
+              "inputs": {
+                "view": "location"
+              },
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "t2",
+              "kind": "navigation",
+              "goal": "改为导航到北京西站，采用推荐策略",
+              "inputs": {
+                "mode": "destination",
+                "destination": "北京西站",
+                "strategy": "recommended"
+              },
+              "depends_on": [
+                "t1"
+              ],
+              "condition": null
+            }
+          ],
+          "clarification": "",
+          "resource_order_edges": {
+            "t1": [],
+            "t2": []
+          },
+          "version": 1
+        },
+        "tasks": [
+          {
+            "id": "t1",
+            "kind": "vehicle_state",
+            "goal": "重新查询当前车辆位置与状态，作为本轮导航起点",
+            "inputs": {
+              "view": "location"
+            },
+            "depends_on": [],
+            "tool": "get_vehicle_location",
+            "arguments": {
+              "view": "location"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": true,
+              "data": {
+                "name": "北京天安门（模拟）",
+                "location": "116.397428,39.909230",
+                "source": "manual_simulation",
+                "simulated": true,
+                "coordinate_system": "GCJ-02",
+                "updated_at": "2026-10-28T03:45:59.429684+00:00"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "steps": [
+              {
+                "id": "t1_s1",
+                "tool": "get_vehicle_location",
+                "arguments": {},
+                "result": {
+                  "ok": true,
+                  "simulated": true,
+                  "data": {
+                    "name": "北京天安门（模拟）",
+                    "location": "116.397428,39.909230",
+                    "source": "manual_simulation",
+                    "simulated": true,
+                    "coordinate_system": "GCJ-02",
+                    "updated_at": "2026-10-28T03:45:59.429684+00:00"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 1,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 1703.0,
+            "duration_ms": 1781.0
+          },
+          {
+            "id": "t2",
+            "kind": "navigation",
+            "goal": "改为导航到北京西站，采用推荐策略",
+            "inputs": {
+              "mode": "destination",
+              "destination": "北京西站",
+              "strategy": "recommended"
+            },
+            "depends_on": [
+              "t1"
+            ],
+            "tool": "navigate_to_destination",
+            "arguments": {
+              "mode": "destination",
+              "destination": "北京西站",
+              "strategy": "recommended"
+            },
+            "condition": null,
+            "order_only": [],
+            "status": "succeeded",
+            "attempts": 1,
+            "result": {
+              "ok": true,
+              "simulated": false,
+              "data": {
+                "provider": "amap",
+                "coordinate_system": "GCJ-02",
+                "origin": {
+                  "name": "北京天安门（模拟）",
+                  "location": "116.397428,39.909230"
+                },
+                "destination": {
+                  "name": "北京西站",
+                  "location": "116.320000,39.890000",
+                  "id": "FIXTURE_WEST"
+                },
+                "strategy": "recommended",
+                "routes": [
+                  {
+                    "name": "高德推荐",
+                    "distance_km": 48.0,
+                    "duration_minutes": 60.0,
+                    "tolls_yuan": 15.0,
+                    "steps": [
+                      {
+                        "instruction": "沿测试道路向东行驶",
+                        "road": "测试道路",
+                        "distance_m": 1000.0
+                      }
+                    ],
+                    "route_id": "1yFhbsnkfeIPPPHX"
+                  },
+                  {
+                    "name": "高德驾车路线",
+                    "distance_km": 51.0,
+                    "duration_minutes": 65.0,
+                    "tolls_yuan": 0.0,
+                    "steps": [],
+                    "route_id": "cdVvJKfepr3XkhRp"
+                  }
+                ],
+                "web_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.320000%2C39.890000%2C%E5%8C%97%E4%BA%AC%E8%A5%BF%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=0",
+                "app_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.320000%2C39.890000%2C%E5%8C%97%E4%BA%AC%E8%A5%BF%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=1",
+                "note": "真实高德路线快照；导航链接会由高德重新算路，不保证与所选备选路线完全一致。未接入真实车辆定位或耗电模型。",
+                "automatic": true,
+                "origin_simulated": true,
+                "selection": {
+                  "query": "北京西站",
+                  "selected": {
+                    "name": "北京西站",
+                    "location": "116.320000,39.890000",
+                    "id": "FIXTURE_WEST",
+                    "address": "",
+                    "distance_m": 6942.5
+                  },
+                  "candidates": [
+                    {
+                      "name": "北京西站",
+                      "location": "116.320000,39.890000",
+                      "id": "FIXTURE_WEST",
+                      "address": "",
+                      "distance_m": 6942.5
+                    }
+                  ],
+                  "candidate_count": 1,
+                  "search_scope": "within_50km",
+                  "distance_metric": "approx_straight_line",
+                  "basis": "在本次返回且名称匹配的候选中，选择坐标近似直线距离最近者；不是最短驾车距离或全量地点检索。"
+                },
+                "origin_source": "manual_simulation"
+              }
+            },
+            "error": null,
+            "authorization": {
+              "required": false,
+              "allowed": true,
+              "source": ""
+            },
+            "steps": [
+              {
+                "id": "t2_s1",
+                "tool": "navigate_to_destination",
+                "arguments": {
+                  "destination": "北京西站",
+                  "strategy": "recommended"
+                },
+                "result": {
+                  "ok": true,
+                  "simulated": false,
+                  "data": {
+                    "provider": "amap",
+                    "coordinate_system": "GCJ-02",
+                    "origin": {
+                      "name": "北京天安门（模拟）",
+                      "location": "116.397428,39.909230"
+                    },
+                    "destination": {
+                      "name": "北京西站",
+                      "location": "116.320000,39.890000",
+                      "id": "FIXTURE_WEST"
+                    },
+                    "strategy": "recommended",
+                    "routes": [
+                      {
+                        "name": "高德推荐",
+                        "distance_km": 48.0,
+                        "duration_minutes": 60.0,
+                        "tolls_yuan": 15.0,
+                        "steps": [
+                          {
+                            "instruction": "沿测试道路向东行驶",
+                            "road": "测试道路",
+                            "distance_m": 1000.0
+                          }
+                        ],
+                        "route_id": "1yFhbsnkfeIPPPHX"
+                      },
+                      {
+                        "name": "高德驾车路线",
+                        "distance_km": 51.0,
+                        "duration_minutes": 65.0,
+                        "tolls_yuan": 0.0,
+                        "steps": [],
+                        "route_id": "cdVvJKfepr3XkhRp"
+                      }
+                    ],
+                    "web_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.320000%2C39.890000%2C%E5%8C%97%E4%BA%AC%E8%A5%BF%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=0",
+                    "app_url": "https://uri.amap.com/navigation?from=116.397428%2C39.909230%2C%E5%8C%97%E4%BA%AC%E5%A4%A9%E5%AE%89%E9%97%A8%EF%BC%88%E6%A8%A1%E6%8B%9F%EF%BC%89&to=116.320000%2C39.890000%2C%E5%8C%97%E4%BA%AC%E8%A5%BF%E7%AB%99&mode=car&policy=0&src=CabinLab&callnative=1",
+                    "note": "真实高德路线快照；导航链接会由高德重新算路，不保证与所选备选路线完全一致。未接入真实车辆定位或耗电模型。",
+                    "automatic": true,
+                    "origin_simulated": true,
+                    "selection": {
+                      "query": "北京西站",
+                      "selected": {
+                        "name": "北京西站",
+                        "location": "116.320000,39.890000",
+                        "id": "FIXTURE_WEST",
+                        "address": "",
+                        "distance_m": 6942.5
+                      },
+                      "candidates": [
+                        {
+                          "name": "北京西站",
+                          "location": "116.320000,39.890000",
+                          "id": "FIXTURE_WEST",
+                          "address": "",
+                          "distance_m": 6942.5
+                        }
+                      ],
+                      "candidate_count": 1,
+                      "search_scope": "within_50km",
+                      "distance_metric": "approx_straight_line",
+                      "basis": "在本次返回且名称匹配的候选中，选择坐标近似直线距离最近者；不是最短驾车距离或全量地点检索。"
+                    },
+                    "origin_source": "manual_simulation"
+                  }
+                },
+                "called": true
+              }
+            ],
+            "needs_replan": false,
+            "version": 1,
+            "superseded_by": null,
+            "recovered_from": [],
+            "auto_finalized": false,
+            "started_ms": 3484.0,
+            "duration_ms": 1469.0
+          }
+        ],
+        "counts": {
+          "succeeded": 2,
+          "blocked": 0,
+          "failed": 0,
+          "skipped": 0
+        },
+        "run": {
+          "run_id": "616568c75ca6429e94aed1713d346f64",
+          "model_calls": 6,
+          "replans": 0,
+          "versions": [
+            {
+              "version": 1,
+              "reason": "初始全局规划",
+              "plan": {
+                "tasks": [
+                  {
+                    "id": "t1",
+                    "kind": "vehicle_state",
+                    "goal": "重新查询当前车辆位置与状态，作为本轮导航起点",
+                    "inputs": {
+                      "view": "location"
+                    },
+                    "depends_on": [],
+                    "condition": null
+                  },
+                  {
+                    "id": "t2",
+                    "kind": "navigation",
+                    "goal": "改为导航到北京西站，采用推荐策略",
+                    "inputs": {
+                      "mode": "destination",
+                      "destination": "北京西站",
+                      "strategy": "recommended"
+                    },
+                    "depends_on": [
+                      "t1"
+                    ],
+                    "condition": null
+                  }
+                ],
+                "clarification": "",
+                "resource_order_edges": {
+                  "t1": [],
+                  "t2": []
+                },
+                "version": 1
+              }
+            }
+          ],
+          "write_ledger": [],
+          "audit": [],
+          "clarification": "",
+          "duration_ms": 8562.0
+        },
+        "answer": {
+          "source": "fallback",
+          "duration_ms": 3619.26,
+          "reason": "回答生成或有限格式/数字检查失败，已使用真实执行结果兜底；任务未重试。"
+        }
+      }
+    }
+  ]
+}

@@ -1,107 +1,24 @@
-"""LLM只生成声明式任务图；通过校验前不执行任何业务工具。"""
-
+"""Planner只提交业务目标图；工具循环由单任务ReAct负责。"""
 import json
-import re
-from typing import Any, Literal
-
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
 from cockpit.tools import build_langchain_tools
+from cockpit.task_types import (MAX_TASKS, Task, TaskPlan, Condition, PlanningError, validate_plan, references, submitted)
 
-MAX_TASKS = 12
-TOOL_NAMES = Literal['get_vehicle_state', 'get_vehicle_location', 'set_temperature', 'set_headlights',
-                     'adjust_seat', 'set_wipers', 'get_route_options', 'find_chargers',
-                     'search_navigation_places', 'plan_navigation_route', 'navigate_to_destination',
-                     'estimate_driving_range', 'get_driving_history']
-REF_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]{0,31}\.data(?:\.[a-zA-Z0-9_-]+)*$')
-
-
-class PlanningError(ValueError):
-    pass
-
-
-class Condition(BaseModel):
-    model_config = ConfigDict(extra='forbid', strict=True)
-    ref: str = Field(max_length=200)
-    operator: Literal['eq', 'ne', 'lt', 'lte', 'gt', 'gte']
-    value: str | int | float | bool | None
-
-
-class Task(BaseModel):
-    model_config = ConfigDict(extra='forbid', strict=True)
-    id: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_-]{0,31}$')
-    tool: TOOL_NAMES
-    arguments: dict[str, Any]
-    depends_on: list[str] = Field(default_factory=list, max_length=MAX_TASKS)
-    condition: Condition | None = None
-
-
-class TaskPlan(BaseModel):
-    model_config = ConfigDict(extra='forbid', strict=True)
-    tasks: list[Task] = Field(max_length=MAX_TASKS, description='可执行任务列表；只有缺少执行必需信息才为空。')
-    clarification: str = Field(default='', max_length=500, description='仅用于缺少必需信息时向用户提问；tasks非空时必须是空字符串。')
-
-
-def references(value, depth=0):
-    if depth > 8:
-        raise PlanningError('任务参数嵌套过深。')
-    if isinstance(value, dict):
-        if '$ref' in value:
-            if set(value) != {'$ref'} or not isinstance(value['$ref'], str) or not REF_PATTERN.fullmatch(value['$ref']):
-                raise PlanningError('任务结果引用格式不正确。')
-            yield value['$ref']
-        else:
-            for child in value.values():
-                yield from references(child, depth + 1)
-    elif isinstance(value, list):
-        for child in value:
-            yield from references(child, depth + 1)
-
-
-def validate_plan(value, catalog, max_tasks=MAX_TASKS):
-    try:
-        raw = json.dumps(value, ensure_ascii=False, allow_nan=False)
-        if len(raw) > 64000:
-            raise PlanningError('任务计划过长。')
-        plan = TaskPlan.model_validate(value)
-    except (ValidationError, TypeError, ValueError, OverflowError, RecursionError):
-        # 不回传模型原始响应或验证器中的输入片段。
-        raise PlanningError('模型没有返回合法的任务计划；本轮未执行工具，请简化请求后重试。') from None
-    if len(plan.tasks) > max_tasks:
-        raise PlanningError(f'超过任务数量上限（{max_tasks}项），本轮未执行。')
-    if bool(plan.tasks) == bool(plan.clarification.strip()):
-        raise PlanningError('计划必须包含任务，或仅包含需要澄清的问题。')
-    ids = {task.id for task in plan.tasks}
-    if len(ids) != len(plan.tasks):
-        raise PlanningError('任务ID不能重复。')
-    for task in plan.tasks:
-        if task.id in task.depends_on or len(set(task.depends_on)) != len(task.depends_on) or not set(task.depends_on) <= ids:
-            raise PlanningError('任务依赖无效。')
-        fields = catalog[task.tool].args_schema.model_fields
-        required = {name for name, field in fields.items() if field.is_required()}
-        if set(task.arguments) - set(fields) or not required <= set(task.arguments):
-            raise PlanningError('工具参数缺失或包含不允许的字段，本轮未执行。')
-        refs = list(references(task.arguments))
-        if task.condition is not None:
-            if not REF_PATTERN.fullmatch(task.condition.ref):
-                raise PlanningError('条件引用格式不正确。')
-            refs.append(task.condition.ref)
-        if any(ref.split('.')[0] not in task.depends_on for ref in refs):
-            raise PlanningError('结果引用必须声明对应的前置依赖。')
-    # Kahn校验：循环或失效任务图一律在任何副作用发生前拒绝。
-    done = set()
-    while len(done) < len(ids):
-        ready = {task.id for task in plan.tasks if task.id not in done and set(task.depends_on) <= done}
-        if not ready:
-            raise PlanningError('任务依赖存在环，本轮未执行。')
-        done |= ready
-    return plan
-
-
+INPUT_GUIDE = """
+任务inputs格式（只填允许字段，不填allow_write或allowed_tools）：
+vehicle_control: {"tool":"set_temperature","arguments":{"temperature":24}}，其他车控同真实工具参数。
+vehicle_state: {}或{"view":"location"}。
+driving_range: {}。driving_history: {"limit":10}，limit可省略。
+navigation: 目的地导航{"mode":"destination","destination":"北京南站","strategy":"recommended"}；
+明确起终点{"mode":"between_places","origin_name":"北京南站","destination":"首都机场T3","city":"北京"}；
+仅搜索地点{"mode":"search","keywords":"北京南站","city":"北京"}。支持origin/destination为前置查询得到的{name,location,id}引用，不猜坐标。
+airport_advice: {"view":"advice","destination":"机场"}；仅查路线view=routes；仅查充电站view=chargers、route_id可选。
+复杂机场建议作为一个业务目标交给ReAct动态查询，不必把每次工具调用拆成全局任务。
+一个目标的证据来自该目标内的真实工具步骤；任务data是主要工具真实data，可供后续$ref引用。
+"""
 PLANNER_PROMPT = """你是中文智能座舱Planner，只通过submit_plan提交结构化任务图，不执行工具，不报告成功。
 单个不明确意图和多个意图都可规划。保留所有明确任务，不擅自增加副作用。
-任务字段：id、tool、arguments、depends_on、condition。任务最多12项；缺少目的地/目标温度等关键参数时返回tasks=[]及clarification，不猜测。
+任务字段：id、kind、goal、inputs、depends_on、condition。kind只有vehicle_control/vehicle_state/driving_range/driving_history/navigation/airport_advice。任务最多12项；缺少目的地/目标温度等关键参数时返回tasks=[]及clarification，不猜测。
 tasks非空时clarification必须为""；需要澄清时tasks必须为[]且clarification必须是非空问题；禁止两个都空或两个都非空。
 你只负责规划，不负责给出最终建议。机场方案、电量、续航等查询有可用工具时先规划查询；执行后另有回答整理器综合建议，不要因为用户要求解释/建议就省略工具或返回空计划。
 依赖任务参数用{"$ref":"t1.data.routes.0.route_id"}引用真实前置结果；引用的任务必须写进depends_on。
@@ -127,39 +44,16 @@ get_driving_history可解释人工行驶记忆；只读。写入历史仅由用�
 
 class Planner:
     def __init__(self, service, model, max_tasks=MAX_TASKS):
-        self.service = service
-        self.max_tasks = max_tasks
-        self.catalog = {tool.name: tool for tool in build_langchain_tools(service)}
-        schema = {'type': 'function', 'function': {'name': 'submit_plan',
-                  'description': '提交经校验后由调度器执行的座舱任务图。', 'parameters': TaskPlan.model_json_schema()}}
-        # 只暴露规划提交工具；auto兼容部分开启thinking但不支持强制tool_choice的服务。
-        # 返回值仍必须通过下方一次submit_plan/纯JSON校验，不能直接执行业务工具。
-        self.model = model.bind_tools([schema], tool_choice='auto')
+        self.service, self.max_tasks = service, max_tasks
+        self.catalog = {tool.name:tool for tool in build_langchain_tools(service)}
+        schema={'type':'function','function':{'name':'submit_plan','description':'提交全局业务目标DAG，不是逐工具调用列表。','parameters':TaskPlan.model_json_schema()}}
+        self.model=model.bind_tools([schema],tool_choice='auto')
 
-    def plan(self, text, history):
-        self.service.trace('planner.started', {'max_tasks': self.max_tasks})
-        catalog = [{'name': tool.name, 'description': tool.description,
-                    'parameters': tool.args_schema.model_json_schema()} for tool in self.catalog.values()]
-        messages = [SystemMessage(content=PLANNER_PROMPT + '\n可用业务工具：' + json.dumps(catalog, ensure_ascii=False)),
-                    *history, HumanMessage(content=text)]
-        response = self.model.invoke(messages)
-        calls = getattr(response, 'tool_calls', [])
-        if len(calls) == 1 and calls[0]['name'] == 'submit_plan':
-            value = calls[0]['args']
-        elif not calls:
-            # 部分兼容服务忽略tool_choice，允许纯JSON，但仍完整校验，绝不执行散文或旧式工具循环。
-            content = response.content
-            if isinstance(content, list):
-                content = '\n'.join(block['text'] for block in content if isinstance(block, dict) and block.get('type') == 'text')
-            try:
-                if not isinstance(content, str) or len(content) > 64000:
-                    raise ValueError()
-                content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content.strip())
-                value = json.loads(content)
-            except (ValueError, TypeError, RecursionError):
-                raise PlanningError('模型没有提交结构化任务计划；本轮未执行，请重试。') from None
-        else:
-            raise PlanningError('Planner只能提交一次submit_plan，不能直接调用车控工具。')
-        plan = validate_plan(value, self.catalog, self.max_tasks)
-        self.service.trace('planner.plan', plan.model_dump())
+    def plan(self, text, history, run=None):
+        self.service.trace('planner.started',{'max_tasks':self.max_tasks})
+        catalog=[{'name':t.name,'description':t.description,'parameters':t.args_schema.model_json_schema()} for t in self.catalog.values()]
+        messages=[SystemMessage(content=PLANNER_PROMPT+INPUT_GUIDE+'\n业务工具说明：'+json.dumps(catalog,ensure_ascii=False)),*history,HumanMessage(content=text)]
+        response=run.invoke(self.model,messages) if run else self.model.invoke(messages)
+        plan=validate_plan(submitted(response,'submit_plan'),self.catalog,self.max_tasks)
+        self.service.trace('planner.plan',plan.model_dump())
         return plan

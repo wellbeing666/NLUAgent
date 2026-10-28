@@ -1,11 +1,12 @@
 import {createNavigation} from './navigation.js';
 const $ = (id) => document.getElementById(id);
-const sourceNames = {rule_nlu:'本地规则', semantic_nlu:'本地语义', nlu_guard:'边界检查', langchain_agent:'云端 Agent', planner_executor:'Planner + Executor', offline_script:'离线处理'};
+const sourceNames = {rule_nlu:'本地规则', semantic_nlu:'本地语义', nlu_guard:'边界检查', langchain_agent:'云端 Agent', planner_executor:'Planner + ReAct + Replanner', offline_script:'离线处理'};
 const taskStatuses = {pending:'等待', running:'执行中', succeeded:'成功', failed:'失败', blocked:'已拦截', skipped:'已跳过'};
 const intentNames = {set_temperature:'设置空调温度', query_vehicle:'查询车辆状态', set_headlights:'前照灯开关', adjust_seat:'调整座椅', set_wipers:'调整雨刮器', estimate_driving_range:'估算剩余续航', get_driving_history:'读取行驶记忆'};
 const toolNames = {...intentNames, get_vehicle_state:'查询车辆状态', get_vehicle_location:'读取车辆位置',
   get_route_options:'查询模拟路线', find_chargers:'查询模拟充电站', search_navigation_places:'搜索高德地点',
   plan_navigation_route:'规划高德路线', navigate_to_destination:'就近导航规划'};
+const kindNames = {vehicle_control:'车辆控制',vehicle_state:'车辆状态',driving_range:'剩余续航',driving_history:'行驶记忆',navigation:'导航目标',airport_advice:'机场方案'};
 const reasons = {
   exact_rule_match:'完整命中规则，未调用向量模型。', semantic_vehicle_query:'语义匹配通过，查询当前模拟车辆状态。',
   validated_absolute_temperature:'明确的绝对温度请求，已通过写操作检查。', below_similarity_or_margin_threshold:'相似度或意图分差不足，本地 NLU 未接受。',
@@ -111,6 +112,18 @@ function eventSummary(event) {
     case 'planner.started': return ['Planner 开始规划', `任务上限 ${d.max_tasks}`, ''];
     case 'planner.plan': return ['LLM 提交任务图', d.clarification || `${d.tasks.length} 项任务，已通过结构和依赖校验`, ''];
     case 'planner.error': return ['计划未通过校验', d.message, 'error'];
+    case 'react.started': return [`${d.task_id} · ReAct开始`, `${d.goal} · 最多${d.max_steps}次决策`, ''];
+    case 'react.action': return [`${d.task_id} · 动态选择${toolNames[d.tool] || d.tool}`, JSON.stringify(d.arguments), ''];
+    case 'react.observation': return [`${d.id} · 工具观察`, d.result.ok ? '已收到真实工具回执，供下一步决策。' : d.result.error.message, d.result.ok ? 'success' : 'error'];
+    case 'react.rejected': return [`${d.task_id} · 调用校验拒绝`, `${d.tool} · ${d.code}`, 'error'];
+    case 'react.completed': return [`${d.task_id} · 目标完成`, `实际主要回执：${d.primary_step_id}`, 'success'];
+    case 'replanner.started': return ['Replanner修订剩余计划', `第${d.attempt}次 · ${d.remaining_ids.join('、')}`, ''];
+    case 'replanner.applied': return [`已采纳计划v${d.version}`, `${d.reason} · ${JSON.stringify(d.replacements)}`, 'success'];
+    case 'replanner.stopped': return ['本轮不再重规划', d.reason, ''];
+    case 'replanner.next_started': return ['识别本轮目标变化', '读取上轮执行事实，判断新请求或需求修改。', ''];
+    case 'replanner.next_decision': return [d.action === 'revise' ? '本轮修改先前目标' : '本轮作为新请求', d.reason, ''];
+    case 'replanner.next_applied': return ['已生成本轮替代目标', `${d.reason} · ${d.task_count}项目标；不重放旧动作。`, ''];
+    case 'replanner.next_fallback': return ['需求识别回到完整规划', d.reason, ''];
     case 'executor.plan': return ['Executor 接收任务图', `${d.tasks.length} 项任务；同一执行器按顺序处理`, ''];
     case 'task.status': return [`${d.id} · ${d.tool} · ${taskStatuses[d.status] || d.status}`, d.error?.message || `依赖：${d.depends_on.join('、') || '无'}；尝试 ${d.attempts} 次`, d.status === 'succeeded' ? 'success' : ['blocked','failed'].includes(d.status) ? 'error' : ''];
     case 'task.guard': return [`${d.task_id} · 写权限检查${d.allowed ? '通过' : '拒绝'}`, d.reason, d.allowed ? 'success' : 'error'];
@@ -195,21 +208,32 @@ function renderTasks(execution) {
   $('task-plan-panel').hidden = !tasks.length;
   if (!tasks.length) {$('task-plan-list').replaceChildren(); return;}
   const counts = execution.counts;
-  $('task-counts').textContent = `成功${counts.succeeded} · 拦截${counts.blocked} · 失败${counts.failed} · 跳过${counts.skipped}`;
+  $('task-counts').textContent = `v${execution.plan.version || 1} · 成功${counts.succeeded} · 拦截${counts.blocked} · 失败${counts.failed} · 跳过${counts.skipped}`;
   $('task-plan-list').replaceChildren(...tasks.map(task => {
     const li = node('li', `task-row ${task.status}`);
     const heading = node('div', 'task-row-heading');
-    heading.append(node('strong', '', `${task.id} · ${toolNames[task.tool] || task.tool}`), node('span', 'task-status', taskStatuses[task.status] || task.status));
+    heading.append(node('strong', '', `${task.id} · ${kindNames[task.kind] || toolNames[task.tool] || task.tool}`), node('span', 'task-status', taskStatuses[task.status] || task.status));
     const dependencies = `依赖：${task.depends_on.join('、') || '无（可独立调度）'} · 尝试${task.attempts}次 · ${duration(task.duration_ms)}`;
     li.append(heading, node('p', 'task-dependencies', dependencies));
+    if (task.goal) li.append(node('p','task-dependencies',`目标：${task.goal}`));
+    if (task.recovered_from?.length) li.append(node('p','task-dependencies',`已从 ${task.recovered_from.join('、')} 的异常中恢复／替代。`));
+    if (task.auto_finalized) li.append(node('p','task-dependencies','写操作已实际核验；模型未正常收束，由代码按回执完成，未重复写入。'));
     if (task.condition) li.append(node('p', 'task-dependencies', `条件：${task.condition.ref} ${task.condition.operator} ${JSON.stringify(task.condition.value)}`));
     if (task.order_only?.length) li.append(node('p', 'task-dependencies', `其中 ${task.order_only.join('、')} 仅为执行器顺序约束，失败不会阻断后续独立任务。`));
     if (task.error) li.append(node('p', 'task-error', `${task.error.code} · ${task.error.message}`));
     const details = node('details');
-    details.append(node('summary', '', '参数与实际结果'), node('pre', '', JSON.stringify({arguments:task.arguments, authorization:task.authorization, result:task.result}, null, 2)));
+    details.append(node('summary', '', `ReAct步骤与真实回执（${task.steps?.length || 0}步）`), node('pre', '', JSON.stringify({inputs:task.inputs, authorization:task.authorization, primary_step_id:task.primary_step_id, evidence_ids:task.evidence_ids, steps:task.steps, result:task.result}, null, 2)));
     li.append(details);
     return li;
   }));
+  if (execution.run?.versions?.length) {
+    const history = node('li','task-row');
+    const details = node('details');
+    details.append(node('summary','','计划版本与恢复记录'),node('pre','',JSON.stringify({versions:execution.run.versions,
+      replaced:execution.run.audit, write_ledger:execution.run.write_ledger, model_calls:execution.run.model_calls, task_instances:execution.run.task_instances},null,2)));
+    history.append(details);
+    $('task-plan-list').append(history);
+  }
 }
 
 function updateCount() {

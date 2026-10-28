@@ -1,12 +1,12 @@
 # 智能座舱 Agent
 
-这是一个可运行的 Python 教学项目，提供命令行和本地网页，演示 **规则／本地向量 NLU → LLM Planner → DAG Executor → Safety Guard／工具执行 → Responder自然回答**。车辆、耗电和原机场案例是模拟数据；高德导航可查询真实地点、驾车路线、地图概览与路书，无真实车辆控制。
+这是一个可运行的 Python 教学项目，提供命令行和本地网页，演示 **规则／本地向量 NLU → Planner全局规划 → ReAct单任务执行 → Replanner修订 → Responder自然回答**。车辆、耗电和原机场案例是模拟数据；高德导航可查询真实地点、驾车路线、地图概览与路书，无真实车辆控制。
 
 项目有两条路径：明确的简单命令由本地规则或语义NLU处理；复杂出行咨询交给支持工具调用的真实模型。另附不需要密钥的固定离线案例，方便先读懂流程。原有命令默认 `--nlu rules`；新增的本地向量版本见下文。
 
 ## 最终回答：先回答问题，再保留执行明细
 
-live模式现在采用 **Planner → Executor → Responder**。Planner仍只提交一次任务图；Executor记录真实成败；新增`cockpit/responder.py`再调用一次未绑定工具的聊天模型，根据原问题与实际回执综合回答。它可以比较方案、解释推荐理由、自然地说明部分任务为何未完成，而非把任务ID、工具名和JSON逐条发给用户。
+live模式采用 **Planner → Executor/ReAct ↔ Replanner → Responder**。Planner提交初始业务目标图，Executor记录真实成败，Replanner可修订剩余目标；新增`cockpit/responder.py`再调用一次未绑定工具的聊天模型，根据原问题与实际回执综合回答。它可以比较方案、解释推荐理由、自然地说明部分任务为何未完成，而非把任务ID、工具名和JSON逐条发给用户。
 
 例如问“电量只有25%，去机场要不要充电？帮我比较方案，给个建议”，回答应先说明模拟节能路线可不充电的依据，再比较高速与充电备选。行驶中混合车控则应说清楚“空调已设置，但灯和座椅未操作，原因是行驶限制”。网页任务明细默认折叠，参数、依赖、权限、成败和原始结果仍能展开查看。
 
@@ -14,7 +14,7 @@ live模式现在采用 **Planner → Executor → Responder**。Planner仍只提
 - 不展示模型内部思考；输入压缩省略地图几何/路书大字段，保留关键查询数值、错误及事实摘要。
 - 有限检查会拒绝空文案、JSON/工具日志、明显误报全部成功、证据外的新阿拉伯数值，以及遗漏默认续航假设或把规划说成已到达等情况。检查不能完整理解自然语言，也不能保证所有推荐或措辞正确；保守检查可能拒绝合理的数字换算，仍需真实任务评测。
 - 整理请求超时、服务异常或检查失败时，按真实记录生成中文兜底，明确提示整理不可用。已经完成的任务不回滚、不重试，也不会误报“本轮尚未执行”。
-- 本地单意图NLU、offline固定案例及需要澄清的请求仍直接回答，不增加模型调用。正常live执行轮次通常是一次规划加一次整理，因此会增加延迟和调用成本；两次模型网络超时各为20秒，不是整轮总时限。
+- 本地单意图NLU、offline固定案例及需要澄清的请求仍直接回答，不增加模型调用。live轮次包含初始规划、逐任务ReAct、必要的重规划及回答整理，会增加延迟和调用成本；每次模型网络超时为20秒，不是整轮总时限。
 
 事件新增`response.started/completed/fallback`。执行记录的`answer.source`区分`model`和`fallback`，便于确认展示的文案来源。真实验证可显式运行`.venv\Scripts\python.exe tests/smoke_answer.py`；续航真实模型用例`tests/smoke_range.py`也会检查回答已通过整理。
 
@@ -94,85 +94,94 @@ SQLite默认位置为`runtime/driving_memory.sqlite3`，无额外依赖，数据
 
 2026-10-27本次完整回归**169项全部通过**，包含17项新增长期记忆测试、2项HTTP录入/隔离测试、1项CLI跨进程测试，以及真实本地BGE断网回归。真实模型调用两个新工具通过；浏览器验证手动录入后续航由50更新为52.9公里，并能在聊天中读取历史计算。截图保存在`reports/driving-range-memory.jpg`。
 
-## 多意图：Planner + Executor
+## 分层任务执行：Planner + ReAct + Replanner
 
-保持已有 `.env` 配置，重新启动服务即可，无新增依赖：
+运行方式不变，没有新增依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe web.py --mode live --nlu rules
-# 或在命令行中观察完整事件
 .\.venv\Scripts\python.exe main.py --mode live --nlu rules
 ```
 
-保持模拟停车，输入：
+NLU仍先识别明确单意图并本地执行；进入Agent的所有任务（含车控）都走单任务ReAct。offline保留原NLU与固定机场脚本，不把固定脚本称为模型规划。没有新增LangGraph、后台任务、实时插话或取消接口；同会话执行期间仍拒绝并发请求。
 
 ```text
-把空调调到24度，并打开前照灯，然后查询车辆状态
+Planner提交业务目标DAG → Executor调度就绪目标 → TaskWorker(ReAct)
+                                               ↓ 动态工具 → 真实观察 → 决定下一步
+                      目标完成 ← finish_task引用成功回执
+                      可恢复异常 → 暂停新任务、等待在途返回
+                                    ↓
+                              Replanner修订剩余图 → 新版本校验 → 继续调度
+最终有效目标与恢复记录 → Responder自然回答（失败则事实兜底）
 ```
 
-NLU先尝试识别。可完整接受的单意图直接本地执行；拒识、缺少信息或多分句请求进入Planner。多意图保护也会覆盖语义NLU的局部命中，避免只执行一句中的某个意图。分句识别采用有限规则，复杂语言仍可能误判，不宣称实现完整自然语言多意图分类。
+### 业务任务图
 
-LLM每轮提交一次结构化计划，不直接调业务工具。下面是上述请求的一种合法计划，实际任务ID由模型生成：
+全局任务不再等同一次工具调用。任务字段为`id/kind/goal/inputs/depends_on/condition`，不接受旧的`tool/arguments`任务格式：
 
 ```json
-{
-  "tasks": [
-    {"id":"t1", "tool":"set_temperature", "arguments":{"temperature":24}, "depends_on":[], "condition":null},
-    {"id":"t2", "tool":"set_headlights", "arguments":{"enabled":true}, "depends_on":[], "condition":null},
-    {"id":"t3", "tool":"get_vehicle_state", "arguments":{}, "depends_on":["t1","t2"], "condition":null}
-  ],
-  "clarification":""
-}
+{"tasks":[
+  {"id":"temp","kind":"vehicle_control","goal":"将空调设为24度","inputs":{"tool":"set_temperature","arguments":{"temperature":24}},"depends_on":[],"condition":null},
+  {"id":"trip","kind":"airport_advice","goal":"分析机场路线与充电备选","inputs":{"view":"advice","destination":"机场"},"depends_on":[],"condition":null},
+  {"id":"state","kind":"vehicle_state","goal":"查询设置后的车辆状态","inputs":{},"depends_on":["temp"],"condition":null}
+],"clarification":""}
 ```
 
-调度器用最多4个线程处理就绪任务。t1/t2没有因果依赖，可一起提交；车控写操作仍在状态锁内执行“检查＋修改＋读回”，不会并发改写车辆状态。t3等两个前置任务**都成功**后查询，返回24℃和开灯状态。独立高德地点搜索的HTTP请求可真正重叠；同一执行器和导航计划自动添加资源顺序边，避免互相覆盖。资源顺序只要求前一个任务结束，不要求成功；模型声明的业务依赖则必须成功。
+`kind`固定为车辆控制、车辆状态、剩余续航、行驶历史、导航、模拟机场建议六类。应用按类别分配工具范围，模型不能通过`allowed_tools`等字段提权。导航又区分目的地自动导航、明确起终点及只搜索地点；只搜索地点的目标没有修改导航计划的权限。
 
-网页新增任务面板，展示任务ID、状态、依赖、条件、尝试次数、耗时，以及可展开的实际参数、授权依据和工具结果。当前仍是请求完成后统一刷新，事件中保留状态变化，不是实时流式调度画面。CLI展示同样的规划、状态、安全与工具事件，不输出模型内部思考。
+一个机场建议目标内部可先查车辆状态，再查路线，根据到达电量决定是否查充电站；这些调用由ReAct观察后决定，不是Planner预先写死的工具列表。导航起终点坐标必须来自本任务或前置任务真实查询，不能由模型编造。
 
-### 参数引用与条件分支
+前置结果继续用`{"$ref":"routes.data.routes.0.route_id"}`引用；`data`是该目标的主要工具真实data，不是模型自由生成的摘要。`condition`继续支持`eq/ne/lt/lte/gt/gte`单条件。完整图先校验ID、输入字段、引用、依赖和无环性，再执行。
 
-任务参数可引用已声明的前置任务真实结果，例如 `{"$ref":"routes.data.routes.0.route_id"}`。只支持字典字段和列表下标，不执行表达式，不访问Python对象。引用字段缺失、类型不匹配或候选为空时，本任务失败，不猜值。
+### 单任务ReAct与完成证据
 
-支持单一条件 `eq/ne/lt/lte/gt/gte`，例如：
+每次模型决策只允许一个调用，观察后再选择下一步；多个独立业务目标仍最多4线程调度。同一执行器和导航计划增加资源顺序约束，车控检查/写入/读回继续共用状态锁。
 
-```json
-{"id":"chargers", "tool":"find_chargers", "arguments":{"route_id":"airport_fast"},
- "depends_on":["state"],
- "condition":{"ref":"state.data.battery_percent", "operator":"lt", "value":30}}
-```
+模型通过`finish_task(primary_step_id, evidence_ids)`结束目标。所有ID必须指向本任务实际成功步骤，主要回执必须符合目标类别：车控必须是目标写入且已核验，续航必须调用续航工具，导航必须有实际路线，机场建议至少查询本轮状态和路线。没有证据的成功声明无效。起点与目的地过近、需要核对入口时明确要求澄清，不把“检测到附近”当成已规划或已到达。
 
-这表示读取state的真实电量后，低于30%才查模拟充电站。可输入 `查询车辆电量，如果电量低于30%，查询机场高速沿途的模拟充电站`。目前支持事先可描述的任务图、结果绑定和单条件判断；执行结果不会触发第二次LLM重新规划，也不支持任意脚本、循环或复杂布尔表达式。
+工具步骤保存在`steps`中，`called=false`区分被范围/参数/证据检查拒绝的提议；`attempts`仅计实际调用。只展示动作、观察和简短决策事件，不记录模型内部思考。
 
-### 授权、安全与失败处理
+### Replanner与跨轮需求修改
 
-- LLM只能提交工具白名单中的任务。执行前校验完整计划、参数字段、ID、引用、依赖及无环性，最多12项；结构非法时整轮不执行。实际参数类型/取值在共享工具层逐任务校验。
-- 每个车控任务先从**本轮用户原句**解析独立明确的写命令，工具名及参数必须一致；一个原句授权只消费一次。模型不能传入`allow_write`或修改车辆遥测。高相似度、历史中的命令和Planner声称“已授权”均不授予权限。
-- 明确多命令可执行，例如 `空调调到24度，并打开前照灯`。授权语法暂限已有规则表达；自由改写的车控任务可能被保守拒绝，可改用单意图hybrid识别。否定、引述、疑问、条件和延后执行的混合写请求不授权，也不预约停车后执行。这是有限范围的保守语法检查，不是完备语义授权系统。
-- 每次车控真正执行时，仍由共享工具层读取最新车辆状态并调用Safety Guard；安全检查与写入在同一把锁中。停车不等于取得写权限，授权也不能绕过行驶限制。
-- 终态为`succeeded/failed/blocked/skipped`。独立任务失败后其他独立任务继续；依赖失败或被拦截则跳过后继；条件不成立也跳过。不会整体回滚已完成动作。
-- 只对无副作用的高德地点搜索连接失败重试一次；车控和导航计划不自动重试。车控没有成功读回不能报告成功，执行结果未知时提示先查询状态。
-- 模型请求超时20秒、SDK不自动重试；调度预算60秒只阻止继续启动任务，已经开始的调用等待真实结果，并非强制杀线程或保证整轮60秒内结束。
-- 最终交给只读Responder根据真实回执组织自然回答；代码保留确定性执行状态并进行有限输出检查，失败时使用真实回执兜底。导航结果说明“已规划、未启动导航”，机场耗电注明模拟。
+出现可恢复失败后停止提交新目标，等已开始的目标返回，再冻结成功任务。Replanner提交剩余目标和`replacements={旧ID:新ID}`；代码检查：
 
-将车辆切到“模拟行驶”，输入 `关闭前照灯，并座椅调到60%，同时空调调到23度`：灯和座椅应被安全拦截，独立温度任务仍可成功。重新停车不会自动补执行之前失败的任务。
+- 成功事实不能覆盖或重放，替代目标使用新执行ID，旧失败及其回执保留在审计中。
+- 原任务的类别、目标、输入和条件不能放宽；只允许更新替代任务引用并补充前置依赖，不能删除原有业务依赖。
+- 可补充状态、续航或历史等只读前置，不可凭空新增车控或改目的地。每个版本重新校验全图与资源顺序。
+- 修订无效、目标仍无法满足或预算用完时结束修订，保留实际结果；无关任务继续，失败依赖的后继跳过。
 
-offline继续保留原本的NLU与固定机场案例，不调用LLM，不把多意图请求伪装成模型规划。无需密钥的Planner/Executor验证使用可注入的固定计划模型，见`tests/test_planner_executor.py`。
+下一轮进入Agent时，Replanner读取上轮事实，判断是独立新请求还是目标修改。例如第一轮`空调调到24度，并导航到北京南站`，第二轮`改去北京西站，刚才空调不动`，只生成新导航/必要查询，不重放空调。已经完成的操作不自动撤销。分类器附带的多余新请求草案被忽略；需求修订格式不合法时只回到一次完整Planner，绝不执行坏图。
 
-| 文件 | 新增职责 |
+当前是轮次间修改，不支持用户在HTTP请求尚未结束时插话、修改或取消。RunState只保存在进程内；reset清空运行状态和对话，但不删除SQLite行驶记忆，也不提供重启后任务恢复。
+
+### 授权、异常与预算
+
+原句写授权在整轮创建一次，线程安全地按工具和精确参数消费，跨ReAct及所有计划版本保留。历史命令、模型声明和高相似度不产生授权。每次实际车控仍经过Safety Guard，停车不会重新授予已经消费的权限。
+
+安全拦截、无授权、缺配置/服务权限、记忆库不可用、写入未知或读回失败不自动重试相关写入。若写入已真实核验，随后模型超时或未正常收束，则由代码保留成功回执完成目标，不重复操作。查询网络错误仅额外重试一次，按整轮相同查询统一计数，不叠加ReAct与Replanner的重试。
+
+默认上限：12个有效目标、4个并行Worker、每任务6次模型决策、每轮2次重规划、累计24个任务实例及40次模型请求。调度预算120秒，在每次新调用前检查；单次模型网络超时仍20秒。不会强杀线程或声称预算到达即可撤销在途调用，已开始调用等实际返回。Responder也计入模型请求次数，预算不足时使用事实兜底。
+
+### 可视化与验证
+
+`POST /api/chat`仍同步返回；`execution.plan`显示当前版本，`execution.tasks`显示有效目标、ReAct步骤和恢复来源，`execution.run.versions/audit/write_ledger`保留版本、替代回执及授权消费记录。默认折叠的任务明细可展开查看；旧步骤失败但后来恢复时，页面总体状态以有效目标最终成败为准。
+
+| 模块 | 职责 |
 | --- | --- |
-| `cockpit/planner.py` | 计划Schema、LLM结构化提交、白名单/引用/DAG校验 |
-| `cockpit/executor.py` | 就绪任务并行调度、结果引用、条件、状态、失败策略和真实回执汇总 |
-| `cockpit/task_auth.py` | 原句分句与逐任务的有限语法写授权 |
-| `cockpit/agent.py` | Planner/Executor接线、最近会话、错误提示 |
-| `cockpit/responder.py` | 只读回答整理、有限输出检查、整理失败兜底 |
-| `cockpit/tools.py` | 任务日志、安全与写权限、状态锁、并行地图查询及过期导航结果保护 |
-| `tests/test_planner_executor.py` | 结构校验、并行、依赖、条件、授权和异常回归 |
-| `tests/smoke_planner.py` | 显式调用已有真实模型的四轮联调，另存脱敏报告 |
+| `cockpit/task_types.py`、`planner.py` | 业务目标Schema、类别权限、规范化输入、全局DAG |
+| `cockpit/task_worker.py` | 动态工具循环、调用范围、观察、完成证据与任务故障 |
+| `cockpit/run_state.py` | 整轮模型/时间预算、写入消费账本、跨版本网络重试额度 |
+| `cockpit/replanner.py` | 需求修改识别、剩余计划修订建议 |
+| `cockpit/executor.py` | 并行调度、等待在途任务、冻结成功、校验并采纳新版本 |
+| `cockpit/agent.py`、`responder.py` | 分层接线、短期运行状态和自然回答 |
 
-运行单元测试：`.venv\Scripts\python.exe -m unittest discover -s tests -v`。
-使用真实模型时显式运行 `.venv\Scripts\python.exe tests/smoke_planner.py`，会消耗配置服务的调用额度，只发送模拟车控与机场案例，并保存`reports/planner-live-smoke.json`。固定模型接线测试不代表真实LLM规划准确率；真实小样本联调也不代表生产任务成功率。
+不请求模型的专项测试：`.venv\Scripts\python.exe -m unittest discover -s tests -p test_react_replanner.py -v`。固定模型仅证明运行接线，不证明真实模型规划质量。
 
-2026-10-27本次完整回归**149项全部通过**，包含真实CPU BGE断网测试；另完成上述真实模型四轮联调和浏览器多意图/行驶拦截验证。新增任务调度测试26项、HTTP多意图测试2项，原Agent接线测试已切换到计划架构。浏览器截图见`reports/planner-executor.jpg`及`reports/planner-executor-safety.jpg`。
+显式真实联调：`.venv\Scripts\python.exe tests/smoke_react.py`。该命令使用配置的真实LLM、固定地图响应、故障注入及临时虚构行驶记录，不请求高德或修改用户记忆；验证多步调用、一次位置版本失效后的重规划，以及下一轮修改目的地不重放车控，保存`reports/react-replanner-live-smoke.json`。真实模型回答可能触发有限检查后的兜底，不能把此小样本联调视为生产成功率。
+
+本次升级验收（2026-10-28）：211项自动测试通过（含真实本地BGE回归）；上述真实LLM三轮联调通过执行断言，前两轮使用模型自然回答，第三轮回答校验后使用事实兜底。网页已用固定模型及地图响应检查v2版本、恢复来源、步骤及版本审计。完成证据通过每个目标的`primary_step_id/evidence_ids`指向本目标实际成功步骤。
+
+无需请求模型的网页故障演示：`.venv\Scripts\python.exe tests/preview_react.py`，打开`http://127.0.0.1:8770`，输入“把空调调到24度，并导航到北京南站，然后查询车辆状态”。这是测试脚本和固定地图响应，专门注入一次位置过期，不能作为真实模型推理或高德联网的证据。检查完按Ctrl+C退出；使用独立的`runtime/preview-react.sqlite3`，不写用户行驶记忆库。
 
 ## 车辆安全判别：行驶限制与停车放行
 
@@ -653,13 +662,13 @@ app.handle：先调用规则NLU（hybrid另有本地向量补充）
        ├─ offline → 仅匹配预置出行案例 → 固定顺序调用工具
        └─ live → LLM Planner提交一次任务图
                    ↓ 完整结构校验、白名单、无环性
-                 Executor：依赖就绪／条件／结果引用／最多4任务并发
+                 Executor：依赖就绪／条件／结果引用／最多4个ReAct任务并发
                    ↓ 每个车控任务检查原句授权＋Safety Guard
-                 工具真实回执 → 记录状态 → 只读Responder组织回答
+                 工具真实回执 → ReAct完成证据／Replanner修订 → 只读Responder组织回答
                                              └─ 整理失败 → 中文事实兜底
 ```
 
-**离线出行案例是固定脚本，不能证明模型具备自主规划能力。** 在 `app.py` 的 `_offline_trip` 中，工具顺序由代码写死；真实模式中模型仅负责提出任务图，Executor按图调度。当前不再使用`create_agent`业务工具循环；LangChain提供模型接口、消息类型、工具Schema与计划提交工具的绑定。
+**离线出行案例是固定脚本，不能证明模型具备自主规划能力。** 在 `app.py` 的 `_offline_trip` 中，工具顺序由代码写死；真实模式中Planner提出业务目标图，TaskWorker根据观察动态调用工具，Replanner受约束地调整剩余图。LangChain提供模型、消息、工具Schema及结构化调用适配，没有额外引入LangGraph。
 
 ### 一次完整的机场查询
 
@@ -695,8 +704,8 @@ app.handle：先调用规则NLU（hybrid另有本地向量补充）
 | 3 | `cockpit/nlu.py` | 意图与槽位；为什么用完整匹配 |
 | 4 | `cockpit/tools.py`、`cockpit/safety.py` | 统一工具、安全、写权限、锁和状态核验 |
 | 5 | `cockpit/data.py` | 数据假设与路线计算依据 |
-| 6 | `cockpit/planner.py` | TaskPlan/Task/Condition、LLM提交、计划校验 |
-| 7 | `cockpit/executor.py`、`cockpit/task_auth.py` | 拓扑调度、结果引用、逐任务授权、失败与汇总 |
+| 6 | `cockpit/task_types.py`、`cockpit/planner.py` | 业务TaskPlan/Task/Condition、类别范围、LLM全局提交 |
+| 7 | `cockpit/executor.py`、`task_worker.py`、`replanner.py`、`run_state.py` | 拓扑调度、动态工具、重规划采纳、整轮授权与预算 |
 | 8 | `cockpit/agent.py`、`cockpit/responder.py` | 三阶段接线、只读语言整理、上下文及失败兜底 |
 
 ### 关键接口
@@ -709,7 +718,7 @@ app.handle：先调用规则NLU（hybrid另有本地向量补充）
 - `find_chargers(route_id="")`：支持 `airport_fast`、`airport_eco`，空字符串查询全部站点。
 - `Planner.plan(text, history) -> TaskPlan`：一次模型调用并校验任务图；不执行业务工具。
 - `Executor.execute(plan, user_text)`：执行DAG并返回逐任务真实记录；共享工具层再次校验参数、安全与权限。
-- `LiveAgent.run(text, history)`：调用Planner、Executor和Responder，返回自然回答及附真实回执的本轮普通消息对。
+- `LiveAgent.run(text, history)`：串联Planner、ReAct、Replanner和Responder，返回自然回答及附真实回执的本轮普通消息对。
 
 ### 为什么复杂请求还要逐任务授权？
 
@@ -722,12 +731,12 @@ LLM提出某项动作不等于用户授权。本地单意图NLU仍保留明确�
 Harness 是围绕模型的运行支撑代码。本项目包含工具定义、结构化参数、共享执行校验、状态读回、进程内上下文、日志、错误提示，以及以下边界：
 
 - 单次网络请求超时20秒，关闭 SDK 自动重试；这不是整轮任务的总超时。
-- 每轮最多12项任务，最多4个调度工作线程；没有图递归循环。60秒调度预算停止启动后续任务，不强制取消在途调用。
+- 每轮最多12个有效目标、4个Worker、每目标6次决策和2次重规划；累计24个实例、40次模型请求。120秒调度预算停止新调用，不强制取消在途调用。
 - 最多保留最近10个完整对话轮次，不按 token 精确计量；工具结果过长仍可能超上下文。
 - 工具失败进入逐任务状态，正常轮次保存真实执行摘要。规划失败保留用户请求与失败说明，不将未闭合的工具调用消息带入下一轮。
 - reset 清空调用方传入的历史；本版本没有独立的持久化 checkpointer。
 
-尚未实现：ASR/TTS、训练式NLU、真实车控与车载定位导航SDK、权限确认流程、持久化恢复、幂等操作账本、任务取消、动态重规划、多Agent、隐私网关及生产级评测。真实地图路线接入见上文高德导航章节。
+尚未实现：ASR/TTS、训练式NLU、真实车控与车载定位导航SDK、权限确认流程、持久化恢复、持久化幂等操作账本、执行中任务取消、多Agent、隐私网关及生产级评测。真实地图路线接入见上文高德导航章节。
 
 ## 5. 五分钟面试演示与答法
 
@@ -746,7 +755,7 @@ Harness 是围绕模型的运行支撑代码。本项目包含工具定义、结
 | NLU与Agent有什么区别？ | NLU处理覆盖范围内的单意图与槽位；Planner把复杂目标拆成带依赖的任务图，Executor依据真实结果调度。 |
 | 为什么不全用LLM？ | 明确高频指令可以本地执行，减少模型调用依赖；但延迟、准确率和成本收益需要实测，这个版本没有做效果对比实验。 |
 | 为什么用LangChain？ | 复用模型适配、消息和工具Schema；任务DAG调度由本项目Executor实现，便于学习并行、依赖与安全边界，没有另加LangGraph。 |
-| Agent自主性在哪里？ | 模型选择任务、参数、依赖和条件；运行时按工具真实结果决定能否执行后继。当前一轮只规划一次，没有动态重规划。 |
+| Agent自主性在哪里？ | 模型选择任务、参数、依赖和条件；运行时按工具真实结果决定能否执行后继。ReAct根据观察动态调用，Replanner可在预算内修订剩余目标。 |
 | 怎样减少幻觉？ | 模型不直接执行；计划先校验、参数可引用真实观察值。回答模型只读真实结果，进行有限数字/状态模式检查并保留事实兜底；仍须评测规划与回答质量，不能保证消除幻觉。 |
 | 工具报成功就够了吗？ | 温度设置后读回实际内存状态核验；真实设备还需要回执、超时和状态查询。 |
 | 超时后能恢复任务吗？ | 这里只提示失败并允许发起新请求，没有断点恢复；下一步才考虑持久化状态、幂等和副作用对账。 |
@@ -777,6 +786,6 @@ python -m unittest discover -s tests -p test_core.py -v
 
 受控模型测试的下一步响应由测试代码预设，只能验证框架与业务接线，不能作为模型推理效果证据。
 
-以上2026-10-20是初版历史记录。当前Planner + Executor的固定计划测试与真实联调分别运行，新增真实四轮记录见`reports/planner-live-smoke.json`：停车三任务成功、行驶两个车控被拦截而温度成功、根据真实电量执行条件查询，以及上下文追问。真实模型的thinking模式不接受强制指定工具名，因此仅暴露`submit_plan`并使用`tool_choice=auto`，返回后仍严格校验单个计划或纯JSON。
+以上2026-10-20是初版历史记录。上一版Planner + Executor的真实四轮记录见`reports/planner-live-smoke.json`；本次分层升级的验证见前文及`reports/react-replanner-live-smoke.json`。模型的thinking模式可能不接受强制指定工具名，各阶段因此只暴露自身允许的工具并使用`tool_choice=auto`，执行前仍严格校验结构与权限。
 
 参考：[LangChain架构选型](https://www.langchain.com/oss-overview)、[ChatOpenAI工具绑定](https://reference.langchain.com/python/langchain-openai/chat_models/base/BaseChatOpenAI/bind_tools)、[ChatOpenAI接口](https://reference.langchain.com/python/langchain-openai/langchain_openai)。

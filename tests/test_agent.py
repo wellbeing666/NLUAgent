@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.outputs import ChatResult, ChatGeneration
 from pydantic import Field
 
 from cockpit.agent import ConfigurationError, LiveAgent, friendly_error
@@ -26,6 +27,33 @@ class ScriptedModel(FakeMessagesListChatModel):
         from cockpit.responder import RESPONSE_PROMPT
         if messages and messages[0].content == RESPONSE_PROMPT:
             raise TimeoutError('固定计划测试未配置回答模型')
+        from cockpit.task_worker import WORKER_PROMPT
+        from cockpit.replanner import NEXT_PROMPT, REPLANNER_PROMPT
+        if messages and messages[0].content == NEXT_PROMPT:
+            message = tool_call('submit_revision', {'action':'new','reason':'固定用例新一轮请求','plan':None}, 'revision')
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        if messages and messages[0].content == REPLANNER_PROMPT:
+            message = tool_call('submit_replan', {'action':'stop','reason':'该固定接线用例不提供替代计划','tasks':[],'replacements':{},'clarification':''}, 'repair')
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        if messages and messages[0].content == WORKER_PROMPT:
+            spec = json.loads(messages[1].content)['task']
+            inputs, kind = spec['inputs'], spec['kind']
+            observations = [json.loads(message.content) for message in messages if isinstance(message,ToolMessage)]
+            good = [item for item in observations if item['result'].get('ok')]
+            if good:
+                message = tool_call('finish_task', {'primary_step_id':good[-1]['step_id'],'evidence_ids':[item['step_id'] for item in good]}, 'finish')
+            else:
+                if kind == 'vehicle_control': name,args=inputs['tool'],inputs['arguments']
+                elif kind == 'vehicle_state': name,args=('get_vehicle_location' if inputs.get('view')=='location' else 'get_vehicle_state'),{}
+                elif kind == 'driving_range': name,args='estimate_driving_range',{}
+                elif kind == 'driving_history': name,args='get_driving_history',inputs
+                elif kind == 'airport_advice':
+                    name,args=('find_chargers',{'route_id':inputs.get('route_id','')}) if inputs.get('view')=='chargers' else ('get_route_options',{'destination':'机场'})
+                elif inputs.get('mode')=='search': name,args='search_navigation_places',{key:inputs[key] for key in ['keywords','city']}
+                elif inputs.get('mode')=='between_places': name,args='plan_navigation_route',{key:inputs[key] for key in ['origin','destination']}
+                else: name,args='navigate_to_destination',{key:value for key,value in inputs.items() if key in {'destination','strategy'}}
+                message=tool_call(name,args,'action'+str(len(observations)))
+            return ChatResult(generations=[ChatGeneration(message=message)])
         self.seen_messages.append(list(messages))
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
@@ -35,7 +63,20 @@ def tool_call(name, args, call_id):
 
 
 def task(tool, arguments, task_id="t1", depends_on=None, condition=None):
-    return {"id": task_id, "tool": tool, "arguments": arguments, "depends_on": depends_on or [], "condition": condition}
+    # 测试夹具用工具名便捷构造业务任务；生产只接受业务目标Schema，不接受旧工具计划。
+    if tool in {'set_temperature','set_headlights','adjust_seat','set_wipers'}:
+        kind,inputs='vehicle_control',{'tool':tool,'arguments':arguments}
+    elif tool in {'get_vehicle_state','get_vehicle_location'}:
+        kind,inputs='vehicle_state',({'view':'location'} if tool=='get_vehicle_location' else arguments)
+    elif tool=='estimate_driving_range': kind,inputs='driving_range',arguments
+    elif tool=='get_driving_history': kind,inputs='driving_history',arguments
+    elif tool in {'get_route_options','find_chargers'}:
+        kind,inputs='airport_advice',{'view':'chargers' if tool=='find_chargers' else 'routes',**arguments}
+    elif tool=='search_navigation_places': kind,inputs='navigation',{'mode':'search',**arguments}
+    elif tool=='plan_navigation_route': kind,inputs='navigation',{'mode':'between_places',**arguments}
+    elif tool=='navigate_to_destination': kind,inputs='navigation',{'mode':'destination',**arguments}
+    else: kind,inputs='unknown',arguments
+    return {'id':task_id,'kind':kind,'goal':tool,'inputs':inputs,'depends_on':depends_on or [],'condition':condition}
 
 
 def plan_message(tasks, clarification=""):

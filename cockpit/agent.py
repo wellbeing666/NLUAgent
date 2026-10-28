@@ -1,4 +1,4 @@
-"""Planner + Executor入口；保留LiveAgent名称供原有CLI/Web调用。"""
+"""Planner、ReAct、Replanner与只读回答入口；保留CLI/Web的LiveAgent接口。"""
 
 import json
 import os
@@ -10,6 +10,9 @@ from langchain_core.messages import AIMessage, HumanMessage
 from cockpit.executor import Executor, result_text
 from cockpit.planner import Planner, PlanningError, MAX_TASKS
 from cockpit.responder import Responder
+from cockpit.replanner import Replanner
+from cockpit.run_state import RunState, BudgetExceeded
+from cockpit.task_types import validate_plan
 from cockpit.tools import ToolService
 
 
@@ -18,12 +21,21 @@ class ConfigurationError(ValueError):
 
 
 class LiveAgent:
-    def __init__(self, service: ToolService, *, model: Any, max_tasks=MAX_TASKS, max_workers=4, response_model=None):
+    def __init__(self, service: ToolService, *, model: Any, max_tasks=MAX_TASKS, max_workers=4, response_model=None,
+                 task_model=None, replan_model=None, max_steps=6, budget_seconds=120, max_replans=2, max_model_calls=40):
         self.service = service
         self.planner = Planner(service, model, max_tasks=max_tasks)
-        self.executor = Executor(service, max_workers=max_workers)
+        self.executor = Executor(service, task_model if task_model is not None else model, max_workers=max_workers,
+                                 max_steps=max_steps, budget_seconds=budget_seconds)
+        self.replanner = Replanner(service, replan_model if replan_model is not None else model)
         self.responder = Responder(response_model if response_model is not None else model, service.trace)
         self.last_execution = None
+        self.previous_execution = None
+        self.limits = {'budget_seconds':budget_seconds,'max_replans':max_replans,'max_model_calls':max_model_calls}
+
+    def reset(self):
+        self.last_execution = None
+        self.previous_execution = None
 
     @classmethod
     def from_env(cls, service: ToolService):
@@ -41,30 +53,43 @@ class LiveAgent:
 
     def run(self, text: str, history: list):
         self.last_execution = None
+        run = RunState(text, **self.limits)
         try:
-            plan = self.planner.plan(text, history)
+            plan = None
+            if self.previous_execution:
+                revision = self.replanner.next_request(text, history, self.previous_execution, run)
+                if revision.action == 'revise':
+                    plan = validate_plan(revision.plan.model_dump(), self.planner.catalog, self.planner.max_tasks)
+                    self.service.trace('replanner.next_applied', {'reason':revision.reason,'task_count':len(plan.tasks)})
+            if plan is None:
+                plan = self.planner.plan(text, history, run)
             if plan.clarification:
                 reply = '本轮未执行任何任务。需要补充信息：' + plan.clarification
-                self.last_execution = {'plan': plan.model_dump(), 'tasks': [], 'counts': {}, 'clarification': plan.clarification}
+                self.last_execution = {'plan': plan.model_dump(), 'tasks': [], 'counts': {}, 'clarification': plan.clarification, 'run':run.snapshot()}
             else:
-                records = self.executor.execute(plan, text)
+                records = self.executor.execute(plan, text, run=run, replanner=self.replanner)
                 counts = {status: sum(r['status'] == status for r in records) for status in ['succeeded', 'blocked', 'failed', 'skipped']}
-                self.last_execution = {'plan': self.executor.last_plan, 'tasks': records, 'counts': counts}
-                reply, answer_info = self.responder.respond(text, records, history)
+                self.last_execution = {'plan': self.executor.last_plan, 'tasks': records, 'counts': counts, 'run':run.snapshot()}
+                reply, answer_info = self.responder.respond(text, records, history, run=run)
+                if run.clarification:
+                    reply += '\n需要补充：' + run.clarification
                 self.last_execution['answer'] = answer_info
+                self.last_execution['run'] = run.snapshot()
+                self.previous_execution = self.last_execution
         except PlanningError:
-            self.service.trace('planner.error', {'message': '任务计划校验失败，本轮未执行业务工具。'})
+            self.service.trace('planner.error', {'message': '新任务图校验失败，未启动该任务图；之前已完成记录保留。'})
             raise
         # 闭合的普通消息对保留上下文；不把未执行的模型tool_call伪装成工具观察结果。
         receipt = [{'id': r['id'], 'tool': r['tool'], 'arguments': r['arguments'], 'status': r['status'],
-                    'observation': result_text(r['tool'], r['result']['data']) if r['status'] == 'succeeded' else r['error']}
+                    'goal':r['goal'], 'observation': result_text(r['tool'], r['result']['data']) if r['status'] == 'succeeded' else r['error'],
+                    'steps':[{'tool':step['tool'],'result':step['result']} for step in r['steps'] if step['called']]}
                    for r in self.last_execution['tasks']]
         history_reply = reply + ('\n[真实执行记录]\n' + json.dumps(receipt, ensure_ascii=False) if receipt else '')
         return reply, [HumanMessage(content=text), AIMessage(content=history_reply)]
 
 
 def friendly_error(exc):
-    if isinstance(exc, (ConfigurationError, PlanningError)):
+    if isinstance(exc, (ConfigurationError, PlanningError, BudgetExceeded)):
         return str(exc)
     name = type(exc).__name__.lower()
     if isinstance(exc, ImportError):

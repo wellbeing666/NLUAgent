@@ -47,6 +47,10 @@ def console_trace(event: str, payload: dict) -> None:
               'task.guard':'任务写授权', 'task.retry':'任务重试', 'executor.completed':'调度完成', 'planner.error':'计划拒绝'}
     labels['memory.recorded'] = '行驶记忆保存'
     labels.update({'response.started':'整理回答', 'response.completed':'回答已生成', 'response.fallback':'回答兜底'})
+    labels.update({'react.started':'单任务ReAct','react.action':'动态工具选择','react.observation':'工具观察','react.completed':'目标完成',
+                   'react.rejected':'动作校验拒绝','replanner.started':'开始重规划','replanner.applied':'采纳新计划','replanner.stopped':'重规划结束',
+                   'replanner.next_started':'识别新需求','replanner.next_decision':'新需求判别','replanner.next_applied':'下一轮目标修订',
+                   'replanner.next_fallback':'需求识别兜底'})
     print(f"[{labels.get(event, event)}] {json.dumps(json_safe(payload), ensure_ascii=False, allow_nan=False)}", flush=True)
 
 

@@ -39,6 +39,8 @@ class WebTests(unittest.TestCase):
         cls.memory_directory.cleanup()
 
     def setUp(self):
+        with self.server.sessions_lock:
+            self.server.sessions.clear()  # 测试间隔离，避免新增用例触发真实服务的32会话上限。
         self.server.memory = DrivingMemory(Path(self.memory_directory.name) / f'{uuid4()}.sqlite3')
         self.jar = http.cookiejar.CookieJar()
         self.client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
@@ -299,6 +301,55 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result['vehicle']['seat_position_percent'], 50)
         self.assertEqual(result['vehicle']['temperature_c'], 24)
         self.assertTrue(result['last']['safety_blocked'])
+
+    def test_react_recovery_snapshot_keeps_versions_steps_and_successful_overall_status(self):
+        from cockpit.agent import LiveAgent
+        from cockpit.task_worker import error
+        from test_react_replanner import RouterModel,business,plan
+        from test_agent import task
+        from copy import deepcopy
+        session=self.navigation_session()
+        self.call('/api/settings',{'mode':'live','nlu':'rules'})
+        self.call('/api/vehicle/location',{'name':'北京天安门（模拟）','location':'116.397428,39.909230'})
+        nav=business('nav','navigation',{'destination':'北京南站'})
+        newer=deepcopy(nav); newer['id']='nav2'
+        repair={'action':'replace','reason':'刷新后重算','tasks':[newer],'replacements':{'nav':'nav2'},'clarification':''}
+        model=RouterModel(plans=[plan(task('set_temperature',{'temperature':24},'temp'),nav)],repairs=[repair])
+        session.app.agent=LiveAgent(session.app.service,model=model,max_workers=1)
+        original=session.app.service.execute
+        once=[True]
+        def stale(name,args,**kwargs):
+            if name=='navigate_to_destination' and once[0]:
+                once[0]=False
+                return error('NAVIGATION_STALE','模拟位置版本已变化')
+            return original(name,args,**kwargs)
+        with patch.object(session.app.service,'execute',side_effect=stale):
+            status,result,_=self.call('/api/chat',{'text':'空调调到24度，并导航到北京南站'})
+        self.assertEqual(status,200)
+        self.assertEqual(result['execution']['counts']['succeeded'],2)
+        self.assertEqual(len(result['execution']['run']['versions']),2)
+        self.assertEqual(result['execution']['run']['audit'][0]['superseded_by'],'nav2')
+        self.assertFalse(result['last']['rejected'])
+        self.assertFalse(result['messages'][-1]['rejected'])
+        self.assertTrue(all(row['steps'] for row in result['execution']['tasks']))
+
+    def test_next_turn_revision_keeps_old_controls_out_of_new_execution(self):
+        from cockpit.agent import LiveAgent
+        from test_react_replanner import RouterModel,business,plan,WestFixture
+        from test_agent import task
+        session=self.navigation_session()
+        session.app.service._navigation=AmapClient(key='fixture',transport=WestFixture())
+        self.call('/api/settings',{'mode':'live','nlu':'rules'})
+        self.call('/api/vehicle/location',{'name':'北京天安门（模拟）','location':'116.397428,39.909230'})
+        model=RouterModel(plans=[plan(task('set_temperature',{'temperature':24},'temp'),business('nav','navigation',{'destination':'北京南站'}))],
+            revisions=[{'action':'revise','reason':'用户换目的地','plan':plan(business('navnew','navigation',{'destination':'北京西站'}))}])
+        session.app.agent=LiveAgent(session.app.service,model=model)
+        self.call('/api/chat',{'text':'空调调到24度，并导航到北京南站'})
+        _,result,_=self.call('/api/chat',{'text':'改去北京西站'})
+        self.assertEqual(result['execution']['counts']['succeeded'],1)
+        self.assertEqual(result['execution']['run']['write_ledger'],[])
+        self.assertEqual(result['vehicle']['temperature_c'],24)
+        self.assertEqual(result['navigation']['plan']['destination']['name'],'北京西站')
 
     def test_driving_state_blocks_local_write_and_preserves_actuator(self):
         self.call('/api/chat', {'text': '打开前照灯'})

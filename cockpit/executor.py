@@ -1,37 +1,22 @@
-"""任务DAG调度、结果引用与逐任务授权。工具结果是最终回答的唯一执行事实来源。"""
-
+"""业务目标DAG调度：ReAct单任务执行、全局修订与不可重放的事实账本。"""
 import math
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from copy import deepcopy
 from dataclasses import dataclass, field, asdict
 from time import monotonic
 
-from cockpit.planner import TaskPlan, validate_plan
-from cockpit.safety import WRITE_TOOLS
-from cockpit.task_auth import write_grants
+from cockpit.task_types import TaskPlan, validate_plan, primary_tools, resource, PlanningError
+from cockpit.run_state import RunState, BudgetExceeded, same_value
+from cockpit.task_worker import TaskWorker, error
 from cockpit.tools import build_langchain_tools
 from cockpit.driving_memory import range_text, history_text
 
-TERMINAL = {'succeeded', 'failed', 'blocked', 'skipped'}
-BLOCKED_CODES = {'SAFETY_BLOCKED', 'WRITE_NOT_AUTHORIZED'}
-TASK_LABELS = {'get_vehicle_state': '查询车辆状态', 'get_vehicle_location': '读取模拟车辆位置',
-               'set_temperature': '设置空调', 'set_headlights': '开关前照灯', 'adjust_seat': '调整座椅',
-               'set_wipers': '设置雨刮', 'get_route_options': '查询模拟机场路线', 'find_chargers': '查询模拟充电站',
-               'search_navigation_places': '搜索高德地点', 'plan_navigation_route': '规划高德路线',
-               'navigate_to_destination': '就近导航规划', 'estimate_driving_range':'估算剩余续航', 'get_driving_history':'读取长期行驶记忆'}
-
-
-def same_value(left, right):
-    if isinstance(left, bool) or isinstance(right, bool):
-        return type(left) is type(right) and left == right
-    if type(left) in {int, float} and type(right) in {int, float}:
-        return left == right
-    if isinstance(left, dict) and isinstance(right, dict):
-        return set(left) == set(right) and all(same_value(left[k], right[k]) for k in left)
-    if isinstance(left, list) and isinstance(right, list):
-        return len(left) == len(right) and all(same_value(a, b) for a, b in zip(left, right))
-    return type(left) is type(right) and left == right
-
+TERMINAL={'succeeded','failed','blocked','skipped','superseded'}
+TASK_LABELS={'get_vehicle_state':'查询车辆状态','get_vehicle_location':'读取模拟车辆位置',
+ 'set_temperature':'设置空调','set_headlights':'开关前照灯','adjust_seat':'调整座椅','set_wipers':'设置雨刮',
+ 'get_route_options':'查询模拟机场路线','find_chargers':'查询模拟充电站','search_navigation_places':'搜索高德地点',
+ 'plan_navigation_route':'规划高德路线','navigate_to_destination':'就近导航规划',
+ 'estimate_driving_range':'估算剩余续航','get_driving_history':'读取长期行驶记忆'}
 
 def resolve_reference(ref, records):
     task_id, *path = ref.split('.')
@@ -79,8 +64,11 @@ def condition_matches(condition, records):
 @dataclass
 class TaskRecord:
     id: str
-    tool: str
+    kind: str
+    goal: str
+    inputs: dict
     depends_on: list
+    tool: str
     arguments: dict
     condition: dict | None = None
     order_only: list = field(default_factory=list)
@@ -89,136 +77,212 @@ class TaskRecord:
     result: dict | None = None
     error: dict | None = None
     authorization: dict = field(default_factory=dict)
+    steps: list = field(default_factory=list)
+    primary_step_id: str | None = None
+    evidence_ids: list = field(default_factory=list)
+    needs_replan: bool = False
+    version: int = 1
+    superseded_by: str | None = None
+    recovered_from: list = field(default_factory=list)
+    auto_finalized: bool = False
     started_ms: float | None = None
     duration_ms: float = 0
 
-    def to_dict(self):
-        return asdict(self)
+    def to_dict(self): return asdict(self)
+
+
+def rewrite_refs(value, mapping):
+    if isinstance(value,dict):
+        if set(value)=={'$ref'}:
+            task_id, rest=value['$ref'].split('.',1)
+            return {'$ref':mapping.get(task_id,task_id)+'.'+rest}
+        return {key:rewrite_refs(child,mapping) for key,child in value.items()}
+    if isinstance(value,list): return [rewrite_refs(child,mapping) for child in value]
+    return value
 
 
 class Executor:
-    def __init__(self, service, max_workers=4, budget_seconds=60):
-        self.service = service
-        self.max_workers = max(1, min(4, max_workers))
-        self.budget_seconds = budget_seconds
-        self.last_plan = None
-        self.last_records = []
+    def __init__(self, service, model, max_workers=4, budget_seconds=120, max_steps=6):
+        self.service, self.model = service, model
+        self.max_workers=max(1,min(4,max_workers))
+        self.budget_seconds=budget_seconds
+        self.worker=TaskWorker(service,model,max_steps)
+        self.catalog={tool.name:tool for tool in build_langchain_tools(service)}
+        self.last_plan=None
+        self.last_records=[]
+        self.run_state=None
 
-    def _effective_plan(self, plan):
-        raw = plan.model_dump()
-        catalog = {tool.name: tool for tool in build_langchain_tools(self.service)}
-        validate_plan(raw, catalog)
-        last_resource = {}
-        order_only = {task['id']: [] for task in raw['tasks']}
-        # 模型的数组顺序不一定是拓扑序，先满足显式依赖再补资源互斥边，避免人为引入循环。
-        ordered, remaining, placed = [], list(raw['tasks']), set()
+    def _effective_plan(self,plan):
+        validate_plan(plan.model_dump(),self.catalog)
+        ordered,remaining,placed=[],list(plan.tasks),set()
         while remaining:
-            ready = next(task for task in remaining if set(task['depends_on']) <= placed)
-            ordered.append(ready)
-            remaining.remove(ready)
-            placed.add(ready['id'])
+            ready=next(task for task in remaining if set(task.depends_on)<=placed)
+            ordered.append(ready); remaining.remove(ready); placed.add(ready.id)
+        previous,orders={}, {task.id:[] for task in plan.tasks}
         for task in ordered:
-            resource = ('actuator:' + task['tool']) if task['tool'] in WRITE_TOOLS else (
-                'navigation' if task['tool'] in {'plan_navigation_route', 'navigate_to_destination'} else None)
-            if resource:
-                previous = last_resource.get(resource)
-                if previous and previous not in task['depends_on']:
-                    task['depends_on'].append(previous)
-                    order_only[task['id']].append(previous)
-                last_resource[resource] = task['id']
-        return validate_plan(raw, catalog), order_only
+            key=resource(task)
+            if key:
+                last=previous.get(key)
+                if last and last not in task.depends_on: orders[task.id].append(last)
+                previous[key]=task.id
+        return orders
 
-    def execute(self, plan: TaskPlan, user_text: str):
-        plan, order_only = self._effective_plan(plan)
-        self.last_plan = plan.model_dump()
-        self.last_plan['resource_order_edges'] = order_only
-        records = {task.id: TaskRecord(task.id, task.tool, list(task.depends_on), deepcopy(task.arguments),
-                    task.condition.model_dump() if task.condition else None) for task in plan.tasks}
-        self.last_records = list(records.values())
-        for task_id, record in records.items():
-            record.order_only = order_only[task_id]
-        self.service.trace('executor.plan', self.last_plan)
-        grants = write_grants(user_text)
-        start = monotonic()
-        running = {}
+    def execute(self,plan,user_text,*,run=None,replanner=None):
+        plan=validate_plan(plan.model_dump(),self.catalog)
+        run=run or RunState(user_text,budget_seconds=self.budget_seconds)
+        self.run_state=run
+        specs={task.id:task for task in plan.tasks}
+        records={}
+        active=list(specs)
+        version=0
 
-        def finish(record, status, error=None):
-            record.status, record.error = status, error
-            if record.started_ms is not None:
-                record.duration_ms = round((monotonic() - start) * 1000 - record.started_ms, 2)
-            self.service.trace('task.status', record.to_dict())
+        def install(new_plan,reason):
+            nonlocal plan,version,active
+            orders=self._effective_plan(new_plan)
+            new_ids=set(task.id for task in new_plan.tasks)-set(records)
+            with run.lock:
+                if len(new_ids)+run.task_instances>run.max_instances: raise PlanningError('累计任务实例达到上限。')
+                run.task_instances+=len(new_ids)
+            version+=1; plan=new_plan; active=[task.id for task in plan.tasks]
+            for task in plan.tasks:
+                specs[task.id]=task
+                if task.id not in records:
+                    records[task.id]=TaskRecord(task.id,task.kind,task.goal,deepcopy(task.inputs),
+                        list(task.depends_on)+orders[task.id],next(iter(sorted(primary_tools(task)))),deepcopy(task.inputs),
+                        task.condition.model_dump() if task.condition else None,order_only=orders[task.id],version=version)
+                elif records[task.id].status=='pending':
+                    records[task.id].depends_on=list(task.depends_on)+orders[task.id]
+                    records[task.id].order_only=orders[task.id]
+            self.last_plan={**plan.model_dump(),'resource_order_edges':orders,'version':version}
+            run.versions.append({'version':version,'reason':reason,'plan':deepcopy(self.last_plan)})
+            self.service.trace('executor.plan',self.last_plan)
+            self.last_records=[records[key] for key in active]
 
-        with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix='cockpit-task') as pool:
-            while any(record.status not in TERMINAL for record in records.values()):
-                for task in plan.tasks:
-                    record = records[task.id]
-                    if record.status != 'pending':
-                        continue
-                    predecessors = [records[dep] for dep in task.depends_on]
-                    if not all(dep.status in TERMINAL for dep in predecessors):
-                        continue
-                    if any(dep.status != 'succeeded' and dep.id not in record.order_only for dep in predecessors):
-                        finish(record, 'skipped', {'code': 'DEPENDENCY_FAILED', 'message': '前置任务未成功，未调用本任务工具。'})
-                        continue
-                    if monotonic() - start >= self.budget_seconds:
-                        finish(record, 'skipped', {'code': 'EXECUTION_BUDGET', 'message': '调度时间预算已到，未开始本任务。'})
-                        continue
-                    if len(running) >= self.max_workers:
-                        break
+        def finish(record,status,err=None):
+            record.status,record.error=status,err
+            if record.started_ms is not None: record.duration_ms=round(run.elapsed_ms()-record.started_ms,2)
+            self.service.trace('task.status',record.to_dict())
+
+        def apply_repair(decision):
+            if decision.action!='replace':
+                if decision.tasks or decision.replacements: raise PlanningError('结束重规划时不能夹带任务。')
+                run.clarification=decision.clarification
+                return False
+            if decision.clarification: raise PlanningError('任务修订与澄清不能混合。')
+            remaining={key:specs[key] for key in active if records[key].status=='pending' or records[key].needs_replan}
+            pinned={key:records[key].to_dict() for key in active if key not in remaining}
+            mapping=decision.replacements
+            if not set(mapping)<=set(remaining) or len(set(mapping.values()))!=len(mapping): raise PlanningError('替换映射无效。')
+            if any(value in records for value in mapping.values()): raise PlanningError('替代任务必须使用全新执行ID。')
+            validated=validate_plan({'tasks':[task.model_dump() for task in decision.tasks],'clarification':''},self.catalog,completed=pinned)
+            new_by_id={task.id:task for task in validated.tasks}
+            expected={mapping.get(key,key) for key in remaining}
+            if not expected<=set(new_by_id): raise PlanningError('重规划丢弃了原剩余目标。')
+            for key,old in remaining.items():
+                new=new_by_id[mapping.get(key,key)]
+                if records[key].needs_replan and key not in mapping: raise PlanningError('失败恢复必须使用新任务ID。')
+                if new.kind!=old.kind or new.goal!=old.goal or not same_value(new.inputs,rewrite_refs(old.inputs,mapping)):
+                    raise PlanningError('重规划不能修改原目标或输入约束。')
+                if not {mapping.get(dep,dep) for dep in old.depends_on} <= set(new.depends_on):
+                    raise PlanningError('重规划不能删除用户原任务的前置约束。')
+                if (new.condition.model_dump() if new.condition else None)!=rewrite_condition(old.condition,mapping):
+                    raise PlanningError('重规划不能放宽原任务执行条件。')
+            for key in set(new_by_id)-expected:
+                if new_by_id[key].kind not in {'vehicle_state','driving_range','driving_history'} or key in records:
+                    raise PlanningError('附加前置只能是新的只读状态/续航/记忆查询。')
+            all_tasks=[specs[key] for key in active if key not in remaining]+list(validated.tasks)
+            proposed=validate_plan({'tasks':[task.model_dump() for task in all_tasks],'clarification':''},self.catalog)
+            if run.task_instances+len(set(new_by_id)-set(records))>run.max_instances: raise PlanningError('累计任务实例达到上限。')
+            # 先验证全部新图，再改变记录。成功事实、授权账本、失败回执均不能被覆盖。
+            for old_id,new_id in mapping.items():
+                old=records[old_id]
+                old.superseded_by=new_id
+                if old.status=='pending': old.status='superseded'
+                run.audit.append(old.to_dict())
+            install(proposed,decision.reason)
+            for old_id,new_id in mapping.items():
+                records[new_id].recovered_from=[*records[old_id].recovered_from,old_id]
+            self.service.trace('replanner.applied',{'version':version,'replacements':mapping,'reason':decision.reason})
+            return True
+
+        install(plan,'初始全局规划')
+        running={}
+        pause=False
+        with ThreadPoolExecutor(max_workers=self.max_workers,thread_name_prefix='cockpit-react') as pool:
+            while pause or running or any(records[key].status=='pending' for key in active):
+                if pause and not running:
+                    candidates=[{'task':specs[key].model_dump(),'execution':records[key].to_dict()} for key in active
+                                if records[key].status=='pending' or records[key].needs_replan]
                     try:
-                        if task.condition and not condition_matches(task.condition, records):
-                            finish(record, 'skipped', {'code': 'CONDITION_NOT_MET', 'message': '前置结果不满足执行条件，未调用工具。'})
-                            continue
-                        record.arguments = resolve_arguments(task.arguments, records)
-                    except (ValueError, TypeError, OverflowError):
-                        finish(record, 'failed', {'code': 'RESULT_REFERENCE_ERROR', 'message': '无法从真实前置结果解析参数或条件，未调用工具。'})
-                        continue
-                    authorized = False
-                    source = ''
-                    if task.tool in WRITE_TOOLS:
-                        for grant in grants:
-                            if not grant['used'] and grant['tool'] == task.tool and same_value(grant['arguments'], record.arguments):
-                                grant['used'], authorized, source = True, True, grant['source']
-                                break
-                    record.authorization = {'required': task.tool in WRITE_TOOLS, 'allowed': authorized if task.tool in WRITE_TOOLS else True, 'source': source}
-                    record.status, record.started_ms = 'running', round((monotonic() - start) * 1000, 2)
-                    self.service.trace('task.status', record.to_dict())
-                    future = pool.submit(self._run_task, record.id, task.tool, record.arguments, authorized)
-                    running[future] = record
-                if not running:
-                    continue
-                completed, _ = wait(running, return_when=FIRST_COMPLETED, timeout=0.1)
-                for future in completed:
-                    record = running.pop(future)
-                    try:
-                        record.result, record.attempts = future.result()
-                        if record.result['ok']:
-                            finish(record, 'succeeded')
-                        else:
-                            error = record.result['error']
-                            finish(record, 'blocked' if error['code'] in BLOCKED_CODES else 'failed', error)
+                        if replanner is None or run.replans>=run.max_replans: raise PlanningError('本轮不再继续重规划。')
+                        decision=replanner.repair(run,candidates,[records[key].to_dict() for key in active
+                                                  if records[key].status=='succeeded'])
+                        adopted=apply_repair(decision)
+                        if not adopted: self.service.trace('replanner.stopped',{'reason':decision.reason,'clarification':decision.clarification})
                     except Exception:
-                        record.attempts = max(1, record.attempts)
-                        finish(record, 'failed', {'code': 'TOOL_EXECUTION_ERROR', 'message': '工具调用异常，执行结果未知；未自动重试，请先查询状态。'})
-        counts = {status: sum(r.status == status for r in records.values()) for status in TERMINAL}
-        self.service.trace('executor.completed', {'counts': counts, 'duration_ms': round((monotonic() - start) * 1000, 2)})
-        return [record.to_dict() for record in records.values()]
+                        adopted=False
+                        self.service.trace('replanner.stopped',{'reason':'修订失败、预算耗尽或违反目标约束；保留原真实结果，不重试写操作。'})
+                    if not adopted:
+                        for key in active: records[key].needs_replan=False
+                    pause=False
+                if not pause:
+                    for key in list(active):
+                        record,task=records[key],specs[key]
+                        if record.status!='pending': continue
+                        predecessors=[records[dep] for dep in record.depends_on]
+                        if not all(parent.status in TERMINAL for parent in predecessors): continue
+                        causal=[parent for parent in predecessors if parent.id not in record.order_only]
+                        if any(parent.status!='succeeded' for parent in causal):
+                            finish(record,'skipped',{'code':'DEPENDENCY_FAILED','message':'前置目标未成功，未启动本任务。'}); continue
+                        if len(running)>=self.max_workers: break
+                        try:
+                            run.check()
+                            if task.condition and not condition_matches(task.condition,records):
+                                finish(record,'skipped',{'code':'CONDITION_NOT_MET','message':'真实前置结果不满足条件，未启动任务。'}); continue
+                            inputs=resolve_arguments(task.inputs,records)
+                            resolved=task.model_copy(update={'inputs':inputs})
+                        except BudgetExceeded as exc:
+                            finish(record,'skipped',{'code':'EXECUTION_BUDGET','message':str(exc)}); continue
+                        except (ValueError,TypeError,OverflowError):
+                            record.needs_replan=task.kind!='vehicle_control'
+                            finish(record,'failed',{'code':'RESULT_REFERENCE_ERROR','message':'前置真实结果没有需要的参数，未猜值。'})
+                            pause=record.needs_replan
+                            if pause: break
+                            continue
+                        record.arguments=deepcopy(inputs)
+                        record.status,record.started_ms='running',run.elapsed_ms()
+                        self.service.trace('task.status',record.to_dict())
+                        context={dep:records[dep].result for dep in task.depends_on if records[dep].status=='succeeded'}
+                        running[pool.submit(self.worker.run,resolved,run,context)]=record
+                if running:
+                    completed,_=wait(running,timeout=.1,return_when=FIRST_COMPLETED)
+                    for future in completed:
+                        record=running.pop(future)
+                        try:
+                            result=future.result()
+                            for name in ['tool','result','error','steps','primary_step_id','evidence_ids','authorization','needs_replan','auto_finalized']:
+                                setattr(record,name,result[name])
+                            record.attempts=sum(bool(step['called']) for step in record.steps)
+                            finish(record,result['status'],result['error'])
+                            pause=pause or record.needs_replan
+                        except Exception:
+                            finish(record,'failed',{'code':'TOOL_EXECUTION_ERROR','message':'任务执行异常，结果可能未知；不自动重试写入。'})
+                elif not pause and any(records[key].status=='pending' for key in active):
+                    for key in active:
+                        if records[key].status=='pending': finish(records[key],'skipped',{'code':'DEPENDENCY_FAILED','message':'没有可继续调度的依赖链。'})
+        self.last_records=[records[key] for key in active]
+        result=[record.to_dict() for record in self.last_records]
+        counts={status:sum(row['status']==status for row in result) for status in ['succeeded','blocked','failed','skipped']}
+        self.service.trace('executor.completed',{'counts':counts,'duration_ms':run.elapsed_ms(),'versions':version})
+        return result
 
-    def _run_task(self, task_id, tool, arguments, authorized):
-        with self.service.task_context(task_id):
-            if tool in WRITE_TOOLS:
-                self.service.trace('task.guard', {'allowed': authorized, 'action': tool,
-                    'reason': '原句中存在参数一致的明确完整命令。' if authorized else '原句未授予该动作与参数的明确写权限。'})
-            for attempt in [1, 2]:
-                result = self.service.execute(tool, arguments, allow_write=authorized)
-                if result.get('ok') and tool in WRITE_TOOLS and result.get('data', {}).get('verified') is not True:
-                    result = {**result, 'ok': False, 'error': {'code': 'VERIFICATION_FAILED',
-                              'message': '工具未通过状态读回核验，可能已执行；未重试，请先查询状态。'}}
-                # 只对无副作用的地点搜索连接失败重试一次；车控和导航计划不重试。
-                if attempt == 1 and tool == 'search_navigation_places' and result.get('error', {}).get('code') == 'AMAP_NETWORK':
-                    self.service.trace('task.retry', {'attempt': 2, 'reason': '地点搜索网络失败，最多重试一次。'})
-                    continue
-                return result, attempt
+
+def rewrite_condition(condition,mapping):
+    if condition is None: return None
+    value=condition.model_dump()
+    task_id,rest=value['ref'].split('.',1)
+    value['ref']=mapping.get(task_id,task_id)+'.'+rest
+    return value
 
 
 def result_text(tool, data):

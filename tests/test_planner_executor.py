@@ -91,7 +91,7 @@ class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self.events = []
         self.service = ToolService(lambda e, d: self.events.append((e, d)))
-        self.executor = Executor(self.service)
+        self.executor = Executor(self.service, ScriptedModel(responses=[]))
 
     def test_multi_controls_authorized_from_original_clauses_and_query_depends(self):
         tasks = [task('set_temperature', {'temperature':24}, 'a'), task('set_headlights', {'enabled':True}, 'b'),
@@ -144,7 +144,7 @@ class SchedulerTests(unittest.TestCase):
                  task('find_chargers', {'route_id':{'$ref':'a.data.routes.0.route_id'}}, 'b', ['a'])]
         records = self.executor.execute(plan(tasks), '查路线然后查充电站')
         self.assertEqual(records[1]['arguments']['route_id'], 'airport_fast')
-        tasks[1]['arguments']['route_id'] = {'$ref':'a.data.routes.99.route_id'}
+        tasks[1]['inputs']['route_id'] = {'$ref':'a.data.routes.99.route_id'}
         records = self.executor.execute(plan(tasks), '查路线然后查充电站')
         self.assertEqual(records[1]['status'], 'failed')
         self.assertEqual(records[1]['attempts'], 0)
@@ -227,7 +227,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertNotIn('private-secret', str(records))
 
     def test_zero_dispatch_budget_does_not_start_or_retry_tasks(self):
-        executor = Executor(self.service, budget_seconds=0)
+        executor = Executor(self.service, ScriptedModel(responses=[]), budget_seconds=0)
         records = executor.execute(plan([task('set_temperature', {'temperature':24})]), '空调调到24度')
         self.assertEqual(records[0]['status'], 'skipped')
         self.assertEqual(self.service.state.temperature_c, 26)

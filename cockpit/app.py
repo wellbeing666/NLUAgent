@@ -35,6 +35,8 @@ class CabinApp:
         self.service.reset()
         self.turns.clear()
         self.last_execution = None
+        if self.agent is not None and hasattr(self.agent, 'reset'):
+            self.agent.reset()
         return "已重置模拟车辆（电量25%、空调26℃），清空模拟车辆位置、路线和本地对话上下文；长期行驶记录和电池容量保留。"
 
     def _remember(self, text: str, reply: str) -> None:
@@ -91,7 +93,7 @@ class CabinApp:
                 self._remember(text, reply)
                 return reply
             return "当前请求未被本地NLU接受，未执行操作。离线还支持固定案例“演示出行”；自由追问请使用live模式。"
-        self.trace("route", {"path": "planner_executor", "note": "LLM规划任务图，Executor按真实结果调度执行"})
+        self.trace("route", {"path": "planner_executor", "note": "Planner全局规划，单任务ReAct动态执行，Replanner按真实异常修订剩余目标"})
         history = [message for turn in self.turns for message in turn]
         try:
             if self.agent is None:
